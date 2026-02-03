@@ -1,0 +1,17 @@
+[package]
+name = "vvw-game"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VVW game plugin - 2D maze exploration with spatial audio"
+
+[dependencies]
+bevy.workspace = true
+leafwing-input-manager.workspace = true
+serde.workspace = true
+ron.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
