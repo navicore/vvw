@@ -163,11 +163,8 @@ mod colors {
 }
 
 fn setup_maze(mut commands: Commands) {
-    tracing::info!("Setting up maze...");
-
     // Create and insert the test maze
     let maze = Maze::simple_test_maze();
-    tracing::info!("Maze created: {}x{}", maze.width, maze.height);
 
     // Spawn tile sprites
     for y in 0..maze.height {
