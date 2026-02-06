@@ -5,10 +5,12 @@
 //! - Player movement with grid-snapping (Pacman-style)
 //! - Tile-based collision detection
 
+mod audio;
 mod maze;
 mod player;
 mod tiles;
 
+pub use audio::AudioPlugin;
 pub use maze::{Maze, MazePlugin};
 pub use player::{Player, PlayerPlugin};
 pub use tiles::{TileKind, TilePos};
@@ -20,6 +22,6 @@ pub struct VvwGamePlugin;
 
 impl Plugin for VvwGamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((MazePlugin, PlayerPlugin));
+        app.add_plugins((MazePlugin, PlayerPlugin, AudioPlugin));
     }
 }
