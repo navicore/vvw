@@ -11,7 +11,10 @@ impl LoopingSampler {
     ///
     /// `data` must have an even number of elements (pairs of L/R samples).
     pub fn new(data: Vec<f32>) -> Self {
-        assert!(data.len().is_multiple_of(2), "data must be interleaved stereo");
+        assert!(
+            data.len().is_multiple_of(2),
+            "data must be interleaved stereo"
+        );
         Self {
             data: data.into_boxed_slice(),
             position: 0,

@@ -2,9 +2,7 @@ use std::f32::consts::TAU;
 use std::sync::Mutex;
 
 use bevy::prelude::*;
-use vvw_audio::{
-    create_channels, AudioCommand, AudioEngine, AudioEvent, LoopingSampler, Track,
-};
+use vvw_audio::{AudioCommand, AudioEngine, AudioEvent, LoopingSampler, Track, create_channels};
 
 use crate::maze::{Maze, TrackIcon};
 use crate::player::{Player, PlayerMovement};
@@ -125,7 +123,9 @@ fn update_track_gains(
 #[allow(clippy::needless_pass_by_value)]
 fn poll_audio_events(receiver: Option<Res<AudioEventReceiver>>) {
     let Some(receiver) = receiver else { return };
-    let Ok(mut rx) = receiver.0.lock() else { return };
+    let Ok(mut rx) = receiver.0.lock() else {
+        return;
+    };
 
     while let Ok(event) = rx.pop() {
         match &event {

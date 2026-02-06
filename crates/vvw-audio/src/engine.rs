@@ -1,5 +1,5 @@
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::Stream;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::comms::{AudioChannels, AudioCommand, AudioEvent};
 use crate::sampler::LoopingSampler;
@@ -40,10 +40,7 @@ pub struct AudioEngine {
 
 impl AudioEngine {
     /// Start the audio engine with the given tracks and communication channels.
-    pub fn start(
-        tracks: Vec<Track>,
-        channels: AudioChannels,
-    ) -> Result<Self, AudioError> {
+    pub fn start(tracks: Vec<Track>, channels: AudioChannels) -> Result<Self, AudioError> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
