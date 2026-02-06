@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::tiles::{TileKind, TilePos, TILE_SIZE};
+use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
 /// Maze resource containing the grid layout
 #[derive(Resource, Debug, Clone, Serialize, Deserialize)]
@@ -94,8 +94,7 @@ impl Maze {
 
     /// Check if a tile position is walkable
     pub fn is_walkable(&self, pos: &TilePos) -> bool {
-        self.get_tile(pos)
-            .is_some_and(|tile| !tile.is_solid())
+        self.get_tile(pos).is_some_and(|tile| !tile.is_solid())
     }
 
     /// Check if a tile blocks line of sight
@@ -200,7 +199,11 @@ fn setup_maze(mut commands: Commands) {
                     },
                     Transform::from_xyz(world_pos.x, world_pos.y, 1.0),
                     TrackIcon {
-                        track_id: maze.find_track_icons().iter().position(|p| *p == pos).unwrap_or(0),
+                        track_id: maze
+                            .find_track_icons()
+                            .iter()
+                            .position(|p| *p == pos)
+                            .unwrap_or(0),
                     },
                     pos,
                 ));

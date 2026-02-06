@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 
 use crate::maze::Maze;
-use crate::tiles::{Direction, TilePos, TILE_SIZE};
+use crate::tiles::{Direction, TILE_SIZE, TilePos};
 
 /// Marker component for the player entity
 #[derive(Component)]
@@ -74,7 +74,10 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<PlayerAction>::default())
             .add_systems(PostStartup, spawn_player)
-            .add_systems(Update, (handle_player_input, update_player_position).chain());
+            .add_systems(
+                Update,
+                (handle_player_input, update_player_position).chain(),
+            );
     }
 }
 

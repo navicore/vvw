@@ -26,9 +26,7 @@ fn main() {
         "info,wgpu=warn,naga=warn"
     };
 
-    tracing_subscriber::fmt()
-        .with_env_filter(log_filter)
-        .init();
+    tracing_subscriber::fmt().with_env_filter(log_filter).init();
 
     tracing::info!("Starting VVW - Visual Virtual World");
 
