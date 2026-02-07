@@ -41,25 +41,9 @@ fn main() {
                     }),
                     ..default()
                 })
-                .disable::<bevy::log::LogPlugin>(), // We initialize tracing manually
+                .disable::<bevy::log::LogPlugin>() // We initialize tracing manually
+                .disable::<bevy::audio::AudioPlugin>(), // We use kira directly
         )
         .add_plugins(VvwGamePlugin)
-        .add_systems(Startup, setup_camera)
         .run();
-}
-
-fn setup_camera(mut commands: Commands) {
-    // Set a dark background color
-    commands.insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.1)));
-
-    // 2D camera centered on the maze
-    // The maze is 15x11 tiles at 32px each = 480x352
-    // Tile positions start at (16, 16) for tile (0,0) so center is at (240+16, 176+16) = (256, 192)
-    let maze_center_x = 15.0 * 32.0 / 2.0 + 16.0;
-    let maze_center_y = 11.0 * 32.0 / 2.0 + 16.0;
-
-    commands.spawn((
-        Camera2d,
-        Transform::from_xyz(maze_center_x, maze_center_y, 0.0),
-    ));
 }

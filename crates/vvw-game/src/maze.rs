@@ -1,9 +1,15 @@
 //! Maze data structure and rendering
 
+use std::collections::HashMap;
+
+use avian2d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+use vvw_light::{LightOccluder2d, PointLight2d};
 
-use crate::tiles::{TILE_SIZE, TileKind, TilePos};
+use crate::audio::TrackAudioState;
+use crate::mazegen::{generate_initial_maze, MazeGenConfig};
+use crate::tiles::{TileKind, TilePos, TILE_SIZE};
 
 /// Maze resource containing the grid layout
 #[derive(Resource, Debug, Clone, Serialize, Deserialize)]
@@ -14,15 +20,29 @@ pub struct Maze {
     pub height: usize,
     /// Grid data stored row-major (y * width + x)
     tiles: Vec<TileKind>,
+    /// Map from tile (x, y) to `track_id` (preserves insertion order across expansions)
+    #[serde(default)]
+    pub track_ids: HashMap<(usize, usize), usize>,
 }
 
 impl Maze {
-    /// Create a new maze with all floor tiles
+    /// Create a new maze with all wall tiles
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             width,
             height,
+            tiles: vec![TileKind::Wall; width * height],
+            track_ids: HashMap::new(),
+        }
+    }
+
+    /// Create a new maze filled with floor tiles
+    pub fn new_floor(width: usize, height: usize) -> Self {
+        Self {
+            width,
+            height,
             tiles: vec![TileKind::Floor; width * height],
+            track_ids: HashMap::new(),
         }
     }
 
@@ -30,7 +50,7 @@ impl Maze {
     pub fn simple_test_maze() -> Self {
         let width = 15;
         let height = 11;
-        let mut maze = Self::new(width, height);
+        let mut maze = Self::new_floor(width, height);
 
         // Add border walls
         for x in 0..width {
@@ -43,15 +63,12 @@ impl Maze {
         }
 
         // Add some internal walls to make it interesting
-        // Horizontal wall with gap
         for x in 2..8 {
             maze.set(x, 4, TileKind::Wall);
         }
-        // Vertical wall with gap
         for y in 2..6 {
             maze.set(10, y, TileKind::Wall);
         }
-        // Another horizontal wall
         for x in 6..13 {
             maze.set(x, 7, TileKind::Wall);
         }
@@ -89,6 +106,15 @@ impl Maze {
     pub fn set(&mut self, x: usize, y: usize, kind: TileKind) {
         if x < self.width && y < self.height {
             self.tiles[y * self.width + x] = kind;
+        }
+    }
+
+    /// Re-stamp all `TrackIcon` tiles from the `track_ids` map.
+    /// Call after carving corridors/rooms that may have overwritten existing icons.
+    pub fn restore_track_icons(&mut self) {
+        let positions: Vec<(usize, usize)> = self.track_ids.keys().copied().collect();
+        for (x, y) in positions {
+            self.set(x, y, TileKind::TrackIcon);
         }
     }
 
@@ -130,6 +156,41 @@ impl Maze {
         }
         positions
     }
+
+    /// Expand the maze grid in all four directions.
+    /// Returns the offset (dx, dy) applied to the origin.
+    /// All existing coordinates shift by this offset.
+    pub fn expand(&mut self, left: usize, right: usize, bottom: usize, top: usize) -> (i32, i32) {
+        let new_width = self.width + left + right;
+        let new_height = self.height + bottom + top;
+        let mut new_tiles = vec![TileKind::Wall; new_width * new_height];
+
+        // Copy existing tiles to new positions (shifted by left, bottom)
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let old_idx = y * self.width + x;
+                let new_x = x + left;
+                let new_y = y + bottom;
+                let new_idx = new_y * new_width + new_x;
+                new_tiles[new_idx] = self.tiles[old_idx];
+            }
+        }
+
+        self.tiles = new_tiles;
+        self.width = new_width;
+        self.height = new_height;
+
+        // Shift track_id keys by the expansion offset
+        if left > 0 || bottom > 0 {
+            self.track_ids = self
+                .track_ids
+                .drain()
+                .map(|((x, y), id)| ((x + left, y + bottom), id))
+                .collect();
+        }
+
+        (left as i32, bottom as i32)
+    }
 }
 
 /// Marker component for maze tiles (for cleanup)
@@ -142,17 +203,23 @@ pub struct TrackIcon {
     pub track_id: usize,
 }
 
+/// Message fired when the maze changes and needs re-rendering
+#[derive(Message)]
+pub struct MazeChanged;
+
 /// Plugin for maze loading and rendering
 pub struct MazePlugin;
 
 impl Plugin for MazePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_maze);
+        app.add_message::<MazeChanged>()
+            .add_systems(Startup, setup_maze)
+            .add_systems(Update, respawn_maze_tiles);
     }
 }
 
 /// Colors for different tile types
-mod colors {
+pub mod colors {
     use bevy::prelude::*;
 
     pub const FLOOR: Color = Color::srgb(0.15, 0.15, 0.2);
@@ -162,10 +229,15 @@ mod colors {
 }
 
 fn setup_maze(mut commands: Commands) {
-    // Create and insert the test maze
-    let maze = Maze::simple_test_maze();
+    let config = MazeGenConfig::default();
+    let (maze, state) = generate_initial_maze(&config);
+    spawn_maze_tiles(&mut commands, &maze);
+    commands.insert_resource(maze);
+    commands.insert_resource(state);
+}
 
-    // Spawn tile sprites
+/// Spawn all tile sprites for the current maze state
+pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
     for y in 0..maze.height {
         for x in 0..maze.width {
             let tile = maze.get(x, y).unwrap_or_default();
@@ -178,39 +250,99 @@ fn setup_maze(mut commands: Commands) {
                 TileKind::Floor | TileKind::TrackIcon => colors::FLOOR,
             };
 
-            // Spawn floor/wall tile
-            commands.spawn((
+            let mut entity = commands.spawn((
                 Sprite {
                     color,
-                    custom_size: Some(Vec2::splat(TILE_SIZE - 1.0)), // Small gap between tiles
+                    custom_size: Some(Vec2::splat(TILE_SIZE - 1.0)),
                     ..default()
                 },
                 Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
                 MazeTile,
             ));
 
-            // Spawn track icon on top if this is a track position
-            if tile == TileKind::TrackIcon {
-                commands.spawn((
-                    Sprite {
-                        color: colors::TRACK_ICON,
-                        custom_size: Some(Vec2::splat(TILE_SIZE * 0.6)),
-                        ..default()
+            if tile == TileKind::Wall {
+                entity.insert((
+                    RigidBody::Static,
+                    Collider::rectangle(TILE_SIZE, TILE_SIZE),
+                    LightOccluder2d {
+                        half_size: Vec2::splat(TILE_SIZE / 2.0),
                     },
-                    Transform::from_xyz(world_pos.x, world_pos.y, 1.0),
-                    TrackIcon {
-                        track_id: maze
-                            .find_track_icons()
-                            .iter()
-                            .position(|p| *p == pos)
-                            .unwrap_or(0),
-                    },
-                    pos,
                 ));
+            }
+
+            if tile == TileKind::TrackIcon {
+                let track_id = maze.track_ids.get(&(x, y)).copied().unwrap_or(0);
+                commands
+                    .spawn((
+                        Sprite {
+                            color: colors::TRACK_ICON,
+                            custom_size: Some(Vec2::splat(TILE_SIZE * 0.6)),
+                            ..default()
+                        },
+                        Transform::from_xyz(world_pos.x, world_pos.y, 1.0),
+                        TrackIcon { track_id },
+                        pos,
+                        TrackAudioState::default(),
+                    ))
+                    .with_child(PointLight2d {
+                        color: Color::srgb(0.8, 0.4, 0.2), // Orange glow
+                        intensity: 0.4,
+                        radius: 100.0,
+                        falloff: 0.6,
+                    });
             }
         }
     }
+}
 
-    // Insert maze as resource
-    commands.insert_resource(maze);
+/// On `MazeChanged`, despawn all maze tiles and track icons, then re-render
+#[allow(clippy::needless_pass_by_value)]
+fn respawn_maze_tiles(
+    mut commands: Commands,
+    mut events: MessageReader<MazeChanged>,
+    tile_query: Query<Entity, With<MazeTile>>,
+    icon_query: Query<Entity, With<TrackIcon>>,
+    maze: Res<Maze>,
+) {
+    // Only process if there are MazeChanged events
+    let mut changed = false;
+    for _event in events.read() {
+        changed = true;
+    }
+    if !changed {
+        return;
+    }
+
+    // Despawn old tiles
+    for entity in &tile_query {
+        commands.entity(entity).despawn();
+    }
+    for entity in &icon_query {
+        commands.entity(entity).despawn();
+    }
+
+    // Spawn fresh tiles from current maze
+    spawn_maze_tiles(&mut commands, &maze);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_preserves_tiles() {
+        let mut maze = Maze::new_floor(3, 3);
+        maze.set(1, 1, TileKind::PlayerStart);
+
+        let (dx, dy) = maze.expand(2, 2, 2, 2);
+        assert_eq!(dx, 2);
+        assert_eq!(dy, 2);
+        assert_eq!(maze.width, 7);
+        assert_eq!(maze.height, 7);
+
+        // Original (1,1) is now at (3,3)
+        assert_eq!(maze.get(3, 3), Some(TileKind::PlayerStart));
+        // New border tiles should be walls
+        assert_eq!(maze.get(0, 0), Some(TileKind::Wall));
+    }
 }

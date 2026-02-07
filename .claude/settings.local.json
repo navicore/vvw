@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs cat:*)",
+      "WebFetch(domain:bevy.org)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(cargo clippy:*)"
+    ]
+  }
+}
