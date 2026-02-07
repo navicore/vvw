@@ -6,7 +6,7 @@ use leafwing_input_manager::prelude::*;
 use vvw_light::PointLight2d;
 
 use crate::maze::Maze;
-use crate::tiles::{TilePos, TILE_SIZE};
+use crate::tiles::{TILE_SIZE, TilePos};
 
 /// Marker component for the player entity
 #[derive(Component)]

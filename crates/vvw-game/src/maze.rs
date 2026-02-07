@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use vvw_light::{LightOccluder2d, PointLight2d};
 
 use crate::audio::TrackAudioState;
-use crate::mazegen::{generate_initial_maze, MazeGenConfig};
-use crate::tiles::{TileKind, TilePos, TILE_SIZE};
+use crate::mazegen::{MazeGenConfig, generate_initial_maze};
+use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
 /// Maze resource containing the grid layout
 #[derive(Resource, Debug, Clone, Serialize, Deserialize)]
