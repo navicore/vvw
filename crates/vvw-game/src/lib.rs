@@ -22,6 +22,7 @@ pub use project::StartupProject;
 pub use tiles::{TileKind, TilePos};
 
 use avian2d::PhysicsPlugins;
+use avian2d::prelude::Gravity;
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 
@@ -30,7 +31,7 @@ pub struct VvwGamePlugin;
 
 impl Plugin for VvwGamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
+        app.insert_resource(Gravity(Vec2::ZERO)).add_plugins((
             PhysicsPlugins::default(),
             EguiPlugin::default(),
             MazePlugin,

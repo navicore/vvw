@@ -29,7 +29,7 @@ impl Default for PlayerMovement {
     fn default() -> Self {
         Self {
             tile_pos: TilePos::new(0, 0),
-            speed: 200.0, // Physics impulse units
+            speed: 1000.0, // Force units; terminal velocity ≈ force / damping
         }
     }
 }
@@ -106,9 +106,10 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
             // Physics components
             RigidBody::Dynamic,
             Collider::rectangle(player_size, player_size),
-            LockedAxes::ROTATION_LOCKED,
             Friction::new(0.7),
-            Restitution::new(0.3), // Slightly bouncy off walls
+            Restitution::new(0.3),
+            LinearDamping(5.0),
+            AngularDamping(5.0),
         ))
         .with_child((
             PointLight2d {
@@ -123,6 +124,7 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
 
 #[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value
 fn handle_player_input(
+    time: Res<Time>,
     mut query: Query<
         (
             &ActionState<PlayerAction>,
@@ -132,6 +134,8 @@ fn handle_player_input(
         With<Player>,
     >,
 ) {
+    let dt = time.delta_secs();
+
     for (action_state, movement, mut velocity) in &mut query {
         let mut direction = Vec2::ZERO;
 
@@ -151,8 +155,10 @@ fn handle_player_input(
             direction = direction.normalize();
         }
 
-        // Set velocity directly for responsive movement with physics collision
-        velocity.0 = direction * movement.speed;
+        // Add to velocity instead of overwriting — collision responses
+        // (bounce, spin) persist naturally. LinearDamping decelerates when
+        // no keys are pressed. Terminal velocity ≈ speed / damping.
+        velocity.0 += direction * movement.speed * dt;
     }
 }
 

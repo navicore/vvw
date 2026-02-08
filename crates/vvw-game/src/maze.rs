@@ -318,6 +318,8 @@ pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
                 entity.insert((
                     RigidBody::Static,
                     Collider::rectangle(TILE_SIZE, TILE_SIZE),
+                    Friction::new(0.5),
+                    Restitution::new(0.4),
                     LightOccluder2d {
                         half_size: Vec2::splat(TILE_SIZE / 2.0),
                     },
