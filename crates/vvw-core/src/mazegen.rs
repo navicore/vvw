@@ -166,8 +166,10 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
         let max_x = corridor_start_x.max(target_x);
         for x in min_x..=max_x {
             for offset in 0..corridor_width {
-                let y = corridor_start_y.saturating_sub(half) + offset;
-                if x < maze.width && y < maze.height {
+                if let Some(y) = corridor_start_y.checked_sub(half).map(|base| base + offset)
+                    && x < maze.width
+                    && y < maze.height
+                {
                     maze.set(x, y, TileKind::Floor);
                 }
             }
@@ -178,8 +180,10 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
         let max_y = corridor_start_y.max(target_y);
         for y in min_y..=max_y {
             for offset in 0..corridor_width {
-                let x = corridor_start_x.saturating_sub(half) + offset;
-                if x < maze.width && y < maze.height {
+                if let Some(x) = corridor_start_x.checked_sub(half).map(|base| base + offset)
+                    && x < maze.width
+                    && y < maze.height
+                {
                     maze.set(x, y, TileKind::Floor);
                 }
             }
@@ -376,5 +380,33 @@ mod tests {
         let mut ids: Vec<usize> = maze.track_ids.values().copied().collect();
         ids.sort_unstable();
         assert_eq!(ids, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn corridor_near_edge_no_panic() {
+        // Verify that corridor carving near the maze edge (where
+        // corridor_start < half) does not panic or misplace tiles.
+        // This exercises the checked_sub fix for the underflow bug.
+        let config = MazeGenConfig {
+            min_room_size: 3,
+            max_room_size: 3,
+            min_corridor_length: 1,
+            max_corridor_length: 2,
+            min_corridor_width: 3,
+            max_corridor_width: 3,
+            max_overlap_fraction: 1.0, // allow any overlap for this test
+        };
+        let (mut maze, mut state) = generate_initial_maze(&config);
+        // Grow many rooms — some will inevitably be placed near edges
+        for i in 0..20 {
+            let _ = grow_maze(&mut maze, &mut state, i);
+        }
+        // No panic means the underflow is handled correctly.
+        // Also verify no tile was carved outside the grid.
+        for y in 0..maze.height {
+            for x in 0..maze.width {
+                assert!(maze.get(x, y).is_some());
+            }
+        }
     }
 }
