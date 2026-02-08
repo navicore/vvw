@@ -22,6 +22,10 @@ struct LightMapDimensions {
     height: usize,
 }
 
+/// Reusable per-tile brightness buffer to avoid per-frame allocation
+#[derive(Resource, Default)]
+struct BrightnessBuffer(Vec<f32>);
+
 /// Marker for the single overlay sprite
 #[derive(Component)]
 struct LightMapOverlay;
@@ -37,6 +41,7 @@ impl Plugin for Lighting2dPlugin {
         app.init_resource::<AmbientLight2d>()
             .init_resource::<LightOccluderGrid>()
             .init_resource::<LightMapDimensions>()
+            .init_resource::<BrightnessBuffer>()
             .add_systems(PostStartup, setup_lightmap)
             .add_systems(PostUpdate, (check_grid_resize, update_lightmap).chain());
     }
@@ -128,6 +133,7 @@ fn update_lightmap(
     mut images: ResMut<Assets<Image>>,
     light_query: Query<(&PointLight2d, &ChildOf)>,
     transform_query: Query<&GlobalTransform>,
+    mut buf: ResMut<BrightnessBuffer>,
 ) {
     let w = grid.width;
     let h = grid.height;
@@ -140,8 +146,11 @@ fn update_lightmap(
         return;
     }
 
-    // Initialize brightness to ambient
-    let mut brightness = vec![ambient.brightness; w * h];
+    // Reuse the brightness buffer; resize only when the grid changes
+    let total = w * h;
+    buf.0.resize(total, 0.0);
+    buf.0.fill(ambient.brightness);
+    let brightness = &mut buf.0;
 
     // Accumulate light contributions
     for (light, child_of) in &light_query {
@@ -154,11 +163,20 @@ fn update_lightmap(
         let light_ty = world_pos.y / tile_size;
         let radius_tiles = light.radius / tile_size;
 
-        // Bounding box in tile coords
-        let min_x = ((light_tx - radius_tiles).floor() as i32).max(0) as usize;
-        let max_x = ((light_tx + radius_tiles).ceil() as i32).min(w as i32 - 1) as usize;
-        let min_y = ((light_ty - radius_tiles).floor() as i32).max(0) as usize;
-        let max_y = ((light_ty + radius_tiles).ceil() as i32).min(h as i32 - 1) as usize;
+        // Bounding box in tile coords (clamp as floats to avoid i32 overflow)
+        let fmin_x = (light_tx - radius_tiles).floor().max(0.0);
+        let fmax_x = (light_tx + radius_tiles).ceil().min((w - 1) as f32);
+        let fmin_y = (light_ty - radius_tiles).floor().max(0.0);
+        let fmax_y = (light_ty + radius_tiles).ceil().min((h - 1) as f32);
+
+        if fmax_x < 0.0 || fmax_y < 0.0 || fmin_x >= w as f32 || fmin_y >= h as f32 {
+            continue;
+        }
+
+        let min_x = fmin_x as usize;
+        let max_x = fmax_x as usize;
+        let min_y = fmin_y as usize;
+        let max_y = fmax_y as usize;
 
         let light_ix = light_tx.round() as i32;
         let light_iy = light_ty.round() as i32;
@@ -217,6 +235,10 @@ fn update_lightmap(
 /// Returns true if the line from (x0,y0) to (x1,y1) is unblocked.
 /// Skips the start tile; checks all intermediate tiles.
 fn bresenham_visible(grid: &LightOccluderGrid, x0: i32, y0: i32, x1: i32, y1: i32) -> bool {
+    if x0 == x1 && y0 == y1 {
+        return true;
+    }
+
     let mut cx = x0;
     let mut cy = y0;
 

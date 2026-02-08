@@ -18,7 +18,7 @@ use crate::tiles::TilePos;
 /// Holds all active kira track handles, indexed by `track_id`
 #[derive(Resource, Default)]
 pub struct TrackHandles {
-    handles: Vec<Option<GameTrack>>,
+    handles: HashMap<usize, GameTrack>,
 }
 
 /// Counter for track IDs
@@ -81,6 +81,22 @@ impl Default for ProjectNameInput {
     }
 }
 
+/// Cached list of saved project names to avoid per-frame filesystem I/O
+#[derive(Resource)]
+struct CachedProjectList {
+    names: Vec<String>,
+    dirty: bool,
+}
+
+impl Default for CachedProjectList {
+    fn default() -> Self {
+        Self {
+            names: Vec::new(),
+            dirty: true, // refresh on first frame
+        }
+    }
+}
+
 /// Audio plugin: kira engine + spatial audio + drag-and-drop + egui panel
 pub struct AudioPlugin;
 
@@ -89,6 +105,7 @@ impl Plugin for AudioPlugin {
         app.init_resource::<LightingConfig>()
             .init_resource::<TrackAudioFiles>()
             .init_resource::<ProjectNameInput>()
+            .init_resource::<CachedProjectList>()
             .add_message::<ProjectSaveRequested>()
             .add_message::<ProjectLoadRequested>()
             .add_systems(PostStartup, (setup_audio, load_project_audio).chain())
@@ -199,10 +216,7 @@ fn handle_file_drop(
         };
 
         // Store the kira handle
-        while handles.handles.len() <= track_id {
-            handles.handles.push(None);
-        }
-        handles.handles[track_id] = Some(track);
+        handles.handles.insert(track_id, track);
 
         tracing::info!("Added track {track_id} from {}", path_buf.display(),);
         any_added = true;
@@ -269,7 +283,7 @@ fn interpolate_and_send(
             state.current_gain = 0.0;
         }
 
-        if let Some(Some(track)) = handles.handles.get_mut(track_icon.track_id) {
+        if let Some(track) = handles.handles.get_mut(&track_icon.track_id) {
             if state.current_gain == 0.0 {
                 // Fully silent — pause to save audio thread work
                 if !was_silent {
@@ -303,6 +317,7 @@ fn audio_ui_panel(
     mut project_name: ResMut<ProjectNameInput>,
     mut save_events: MessageWriter<ProjectSaveRequested>,
     mut load_events: MessageWriter<ProjectLoadRequested>,
+    mut project_list: ResMut<CachedProjectList>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -325,11 +340,14 @@ fn audio_ui_panel(
                     }
                 });
 
-                let saved = project::list_projects();
-                if !saved.is_empty() {
+                if project_list.dirty {
+                    project_list.names = project::list_projects();
+                    project_list.dirty = false;
+                }
+                if !project_list.names.is_empty() {
                     ui.separator();
                     ui.label("Saved projects:");
-                    for name in &saved {
+                    for name in &project_list.names {
                         if ui.button(name).clicked() {
                             load_events.write(ProjectLoadRequested(name.clone()));
                         }
@@ -458,6 +476,7 @@ fn handle_project_save(
     state: Res<MazeGenState>,
     lighting: Res<LightingConfig>,
     track_audio: Res<TrackAudioFiles>,
+    mut project_list: ResMut<CachedProjectList>,
 ) {
     let mut name = None;
     for event in events.read() {
@@ -469,7 +488,10 @@ fn handle_project_save(
 
     let save_path = project::project_dir(&project_name);
     match project::save_project(&save_path, &maze, &state, &lighting, &track_audio.files) {
-        Ok(()) => tracing::info!("Project '{project_name}' saved to {}", save_path.display()),
+        Ok(()) => {
+            tracing::info!("Project '{project_name}' saved to {}", save_path.display());
+            project_list.dirty = true;
+        }
         Err(e) => tracing::error!("Failed to save project '{project_name}': {e}"),
     }
 }
@@ -488,6 +510,7 @@ fn handle_project_load(
     mut maze_changed: MessageWriter<MazeChanged>,
     mut player_query: Query<&mut Transform, With<Player>>,
     mut project_name: ResMut<ProjectNameInput>,
+    mut project_list: ResMut<CachedProjectList>,
 ) {
     let mut load_name = None;
     for event in events.read() {
@@ -507,10 +530,8 @@ fn handle_project_load(
     };
 
     // Stop all playing tracks
-    for handle in &mut handles.handles {
-        if let Some(track) = handle.as_mut() {
-            track.stop();
-        }
+    for track in handles.handles.values_mut() {
+        track.stop();
     }
     handles.handles.clear();
 
@@ -554,10 +575,7 @@ fn handle_project_load(
 
             match manager.add_track(kira_bytes) {
                 Ok(track) => {
-                    while handles.handles.len() <= entry.track_id {
-                        handles.handles.push(None);
-                    }
-                    handles.handles[entry.track_id] = Some(track);
+                    handles.handles.insert(entry.track_id, track);
                     tracing::info!(
                         "Loaded track {} ({})",
                         entry.track_id,
@@ -587,6 +605,7 @@ fn handle_project_load(
     // Update the name input to match the loaded project
     project_name.0.clone_from(&name);
 
+    project_list.dirty = true;
     maze_changed.write(MazeChanged);
     tracing::info!("Project '{name}' loaded from {}", path.display());
 }
@@ -613,10 +632,7 @@ fn load_project_audio(
     for (track_id, audio_file) in entries {
         match manager.add_track(audio_file.bytes.clone()) {
             Ok(track) => {
-                while handles.handles.len() <= *track_id {
-                    handles.handles.push(None);
-                }
-                handles.handles[*track_id] = Some(track);
+                handles.handles.insert(*track_id, track);
                 tracing::info!(
                     "Replayed track {} ({}) from loaded project",
                     track_id,

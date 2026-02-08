@@ -35,20 +35,21 @@ pub fn projects_dir() -> PathBuf {
 }
 
 /// Returns the directory for a specific named project.
-/// Sanitizes the name to prevent path traversal.
+/// Sanitizes the name to prevent path traversal and platform-specific issues.
 pub fn project_dir(name: &str) -> PathBuf {
-    let sanitized: String = name
+    let trimmed = name.trim();
+    let sanitized: String = trimmed
         .chars()
         .map(|c| {
-            if c == '/' || c == '\\' || c == '\0' {
+            if c == '/' || c == '\\' || c == '\0' || c == ':' {
                 '_'
             } else {
                 c
             }
         })
         .collect();
-    // Reject pure-dot names like "." and ".."
-    let sanitized = if sanitized.trim_matches('.').is_empty() {
+    // Reject empty, whitespace-only, and pure-dot names like "." and ".."
+    let sanitized = if sanitized.trim().is_empty() || sanitized.trim_matches('.').is_empty() {
         "unnamed".to_string()
     } else {
         sanitized
@@ -253,9 +254,19 @@ mod tests {
         assert_eq!(project_dir("../../etc"), base.join(".._.._etc"));
         assert_eq!(project_dir("a/b\\c"), base.join("a_b_c"));
 
+        // Colons replaced with underscores
+        assert_eq!(project_dir("C:foo"), base.join("C_foo"));
+
         // Dot-only names rejected
         assert_eq!(project_dir(".."), base.join("unnamed"));
         assert_eq!(project_dir("."), base.join("unnamed"));
+
+        // Empty and whitespace-only names rejected
+        assert_eq!(project_dir(""), base.join("unnamed"));
+        assert_eq!(project_dir("   "), base.join("unnamed"));
+
+        // Leading/trailing whitespace trimmed
+        assert_eq!(project_dir("  my-maze  "), base.join("my-maze"));
 
         // Normal names pass through
         assert_eq!(project_dir("my-maze"), base.join("my-maze"));
