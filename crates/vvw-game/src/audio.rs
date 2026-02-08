@@ -6,7 +6,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use vvw_audio::{GameAudioManager, GameTrack};
 
 use crate::maze::{MazeChanged, TrackIcon};
-use crate::mazegen;
+use crate::mazegen::{self, MazeGenState};
 use crate::player::Player;
 use crate::spatial;
 use crate::tiles::TilePos;
@@ -221,6 +221,7 @@ fn audio_ui_panel(
     mut contexts: EguiContexts,
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
     counter: Res<TrackIdCounter>,
+    mut state: ResMut<MazeGenState>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -236,15 +237,15 @@ fn audio_ui_panel(
             if counter.0 == 0 {
                 ui.label("Drop a .wav file onto\nthe window to add a track.");
             } else {
-                for (track_icon, state) in &track_query {
+                for (track_icon, audio_state) in &track_query {
                     ui.group(|ui| {
                         ui.label(format!("Track {}", track_icon.track_id));
                         ui.add(
-                            egui::ProgressBar::new(state.current_gain)
+                            egui::ProgressBar::new(audio_state.current_gain)
                                 .desired_width(120.0)
-                                .text(format!("{:.0}%", state.current_gain * 100.0)),
+                                .text(format!("{:.0}%", audio_state.current_gain * 100.0)),
                         );
-                        if state.visible {
+                        if audio_state.visible {
                             ui.colored_label(egui::Color32::from_rgb(80, 200, 80), "visible");
                         } else {
                             ui.colored_label(egui::Color32::from_rgb(200, 80, 80), "occluded");
@@ -254,5 +255,33 @@ fn audio_ui_panel(
                 ui.separator();
                 ui.label("Drop more files to\nadd tracks.");
             }
+
+            ui.add_space(12.0);
+
+            ui.collapsing("Maze Settings", |ui| {
+                let cfg = &mut state.config;
+
+                ui.label("Room size");
+                ui.add(egui::Slider::new(&mut cfg.min_room_size, 2..=10).text("min"));
+                ui.add(egui::Slider::new(&mut cfg.max_room_size, 2..=15).text("max"));
+
+                ui.add_space(4.0);
+                ui.label("Corridor length");
+                ui.add(egui::Slider::new(&mut cfg.min_corridor_length, 1..=10).text("min"));
+                ui.add(egui::Slider::new(&mut cfg.max_corridor_length, 2..=15).text("max"));
+
+                ui.add_space(4.0);
+                ui.label("Corridor width");
+                ui.add(egui::Slider::new(&mut cfg.min_corridor_width, 1..=5).text("min"));
+                ui.add(egui::Slider::new(&mut cfg.max_corridor_width, 1..=5).text("max"));
+
+                ui.add_space(4.0);
+                ui.label("Room overlap limit");
+                ui.add(
+                    egui::Slider::new(&mut cfg.max_overlap_fraction, 0.0..=0.5)
+                        .text("max %")
+                        .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+                );
+            });
         });
 }
