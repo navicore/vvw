@@ -1,7 +1,7 @@
 //! Dead-zone camera that follows the player
 
 use bevy::prelude::*;
-use vvw_light::{AmbientLight2d, Lighting2dPlugin};
+use vvw_light::Lighting2dPlugin;
 
 use crate::player::Player;
 
@@ -44,11 +44,6 @@ impl Plugin for CameraPlugin {
 
 fn spawn_camera(mut commands: Commands) {
     commands.insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.1)));
-    commands.insert_resource(AmbientLight2d {
-        color: Color::srgb(0.1, 0.1, 0.2),
-        brightness: 0.15,
-    });
-
     commands.spawn((Camera2d, GameCamera, Transform::default()));
 }
 

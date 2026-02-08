@@ -12,6 +12,10 @@ use crate::tiles::{TILE_SIZE, TilePos};
 #[derive(Component)]
 pub struct Player;
 
+/// Marker for the player's point light (lantern)
+#[derive(Component)]
+pub struct PlayerLight;
+
 /// Player movement configuration
 #[derive(Component)]
 pub struct PlayerMovement {
@@ -106,12 +110,15 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
             Friction::new(0.7),
             Restitution::new(0.3), // Slightly bouncy off walls
         ))
-        .with_child(PointLight2d {
-            color: Color::srgb(1.0, 0.9, 0.6), // Warm lantern
-            intensity: 0.4,
-            radius: 100.0,
-            falloff: 0.6,
-        });
+        .with_child((
+            PointLight2d {
+                color: Color::srgb(1.0, 0.9, 0.6), // Warm lantern
+                intensity: 0.4,
+                radius: 100.0,
+                falloff: 0.6,
+            },
+            PlayerLight,
+        ));
 }
 
 #[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value

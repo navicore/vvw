@@ -4,10 +4,11 @@ use bevy::prelude::*;
 use bevy::window::FileDragAndDrop;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use vvw_audio::{GameAudioManager, GameTrack};
+use vvw_light::{AmbientLight2d, LightingConfig, PointLight2d};
 
-use crate::maze::{MazeChanged, TrackIcon};
+use crate::maze::{MazeChanged, TrackIcon, TrackLight};
 use crate::mazegen::{self, MazeGenState};
-use crate::player::Player;
+use crate::player::{Player, PlayerLight};
 use crate::spatial;
 use crate::tiles::TilePos;
 
@@ -51,13 +52,15 @@ pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, setup_audio)
+        app.init_resource::<LightingConfig>()
+            .add_systems(PostStartup, setup_audio)
             .add_systems(
                 Update,
                 (
                     handle_file_drop,
                     compute_spatial_targets,
                     interpolate_and_send,
+                    apply_lighting_config,
                 )
                     .chain(),
             )
@@ -222,6 +225,7 @@ fn audio_ui_panel(
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
     counter: Res<TrackIdCounter>,
     mut state: ResMut<MazeGenState>,
+    mut lighting: ResMut<LightingConfig>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -238,8 +242,16 @@ fn audio_ui_panel(
                 ui.label("Drop a .wav file onto\nthe window to add a track.");
             } else {
                 for (track_icon, audio_state) in &track_query {
-                    ui.group(|ui| {
-                        ui.label(format!("Track {}", track_icon.track_id));
+                    let status = if audio_state.visible {
+                        format!(
+                            "Track {} {:.0}%",
+                            track_icon.track_id,
+                            audio_state.current_gain * 100.0
+                        )
+                    } else {
+                        format!("Track {} --", track_icon.track_id)
+                    };
+                    ui.collapsing(status, |ui| {
                         ui.add(
                             egui::ProgressBar::new(audio_state.current_gain)
                                 .desired_width(120.0)
@@ -283,5 +295,51 @@ fn audio_ui_panel(
                         .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
                 );
             });
+
+            ui.collapsing("Lighting", |ui| {
+                ui.label("Ambient");
+                ui.add(
+                    egui::Slider::new(&mut lighting.ambient_brightness, 0.0..=1.0)
+                        .text("brightness"),
+                );
+
+                ui.add_space(4.0);
+                ui.label("Player lantern");
+                ui.add(
+                    egui::Slider::new(&mut lighting.player_intensity, 0.0..=2.0).text("intensity"),
+                );
+                ui.add(egui::Slider::new(&mut lighting.player_radius, 10.0..=500.0).text("radius"));
+                ui.add(egui::Slider::new(&mut lighting.player_falloff, 0.1..=5.0).text("falloff"));
+
+                ui.add_space(4.0);
+                ui.label("Track lights");
+                ui.add(
+                    egui::Slider::new(&mut lighting.track_intensity, 0.0..=2.0).text("intensity"),
+                );
+                ui.add(egui::Slider::new(&mut lighting.track_radius, 10.0..=500.0).text("radius"));
+                ui.add(egui::Slider::new(&mut lighting.track_falloff, 0.1..=5.0).text("falloff"));
+            });
         });
+}
+
+/// Push `LightingConfig` values to the actual light components each frame.
+#[allow(clippy::needless_pass_by_value)]
+fn apply_lighting_config(
+    config: Res<LightingConfig>,
+    mut ambient: ResMut<AmbientLight2d>,
+    mut player_lights: Query<&mut PointLight2d, (With<PlayerLight>, Without<TrackLight>)>,
+    mut track_lights: Query<&mut PointLight2d, (With<TrackLight>, Without<PlayerLight>)>,
+) {
+    ambient.brightness = config.ambient_brightness;
+
+    for mut light in &mut player_lights {
+        light.intensity = config.player_intensity;
+        light.radius = config.player_radius;
+        light.falloff = config.player_falloff;
+    }
+    for mut light in &mut track_lights {
+        light.intensity = config.track_intensity;
+        light.radius = config.track_radius;
+        light.falloff = config.track_falloff;
+    }
 }
