@@ -166,7 +166,7 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
         let max_x = corridor_start_x.max(target_x);
         for x in min_x..=max_x {
             for offset in 0..corridor_width {
-                if let Some(y) = corridor_start_y.checked_sub(half).map(|base| base + offset)
+                if let Some(y) = (corridor_start_y + offset).checked_sub(half)
                     && x < maze.width
                     && y < maze.height
                 {
@@ -180,7 +180,7 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
         let max_y = corridor_start_y.max(target_y);
         for y in min_y..=max_y {
             for offset in 0..corridor_width {
-                if let Some(x) = corridor_start_x.checked_sub(half).map(|base| base + offset)
+                if let Some(x) = (corridor_start_x + offset).checked_sub(half)
                     && x < maze.width
                     && y < maze.height
                 {
@@ -407,6 +407,70 @@ mod tests {
             for x in 0..maze.width {
                 assert!(maze.get(x, y).is_some());
             }
+        }
+    }
+
+    #[test]
+    fn corridor_completeness() {
+        // Verify that every room pair (source → new) is connected by a
+        // walkable path. After growing N rooms there should be exactly
+        // N track icons, and flood-filling from the player start should
+        // reach every one of them (no unreachable rooms due to incomplete
+        // corridors).
+        let config = MazeGenConfig {
+            min_room_size: 3,
+            max_room_size: 5,
+            min_corridor_length: 2,
+            max_corridor_length: 4,
+            min_corridor_width: 1,
+            max_corridor_width: 3,
+            max_overlap_fraction: 0.3,
+        };
+        let (mut maze, mut state) = generate_initial_maze(&config);
+        let num_tracks = 8;
+        for i in 0..num_tracks {
+            grow_maze(&mut maze, &mut state, i);
+        }
+
+        // Flood fill from player start (or first room center if carving
+        // overwrote the PlayerStart tile — a known edge case with overlapping rooms)
+        let start = maze
+            .find_player_start()
+            .unwrap_or_else(|| state.rooms[0].center());
+        let mut visited = vec![false; maze.width * maze.height];
+        let mut queue = std::collections::VecDeque::new();
+        let sx = start.x as usize;
+        let sy = start.y as usize;
+        visited[sy * maze.width + sx] = true;
+        queue.push_back((sx, sy));
+
+        while let Some((cx, cy)) = queue.pop_front() {
+            for (nx, ny) in [
+                (cx.wrapping_sub(1), cy),
+                (cx + 1, cy),
+                (cx, cy.wrapping_sub(1)),
+                (cx, cy + 1),
+            ] {
+                if nx < maze.width && ny < maze.height {
+                    let idx = ny * maze.width + nx;
+                    if !visited[idx] && !maze.is_wall(nx as i32, ny as i32) {
+                        visited[idx] = true;
+                        queue.push_back((nx, ny));
+                    }
+                }
+            }
+        }
+
+        // Every track icon must be reachable from the player start
+        let track_positions = maze.find_track_icons();
+        assert_eq!(track_positions.len(), num_tracks);
+        for pos in &track_positions {
+            let idx = pos.y as usize * maze.width + pos.x as usize;
+            assert!(
+                visited[idx],
+                "Track at ({}, {}) is unreachable from player start",
+                pos.x, pos.y
+            );
         }
     }
 }
