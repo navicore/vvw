@@ -173,10 +173,10 @@ fn update_lightmap(
             continue;
         }
 
-        let min_x = fmin_x as usize;
-        let max_x = fmax_x as usize;
-        let min_y = fmin_y as usize;
-        let max_y = fmax_y as usize;
+        let min_x = (fmin_x as usize).min(w.saturating_sub(1));
+        let max_x = (fmax_x as usize).min(w.saturating_sub(1));
+        let min_y = (fmin_y as usize).min(h.saturating_sub(1));
+        let max_y = (fmax_y as usize).min(h.saturating_sub(1));
 
         let light_ix = light_tx.round() as i32;
         let light_iy = light_ty.round() as i32;

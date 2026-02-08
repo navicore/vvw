@@ -37,6 +37,12 @@ pub fn projects_dir() -> PathBuf {
 /// Returns the directory for a specific named project.
 /// Sanitizes the name to prevent path traversal and platform-specific issues.
 pub fn project_dir(name: &str) -> PathBuf {
+    // Windows reserved device names
+    const RESERVED: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+
     let trimmed = name.trim();
     let sanitized: String = trimmed
         .chars()
@@ -49,11 +55,19 @@ pub fn project_dir(name: &str) -> PathBuf {
         })
         .collect();
     // Reject empty, whitespace-only, and pure-dot names like "." and ".."
-    let sanitized = if sanitized.trim().is_empty() || sanitized.trim_matches('.').is_empty() {
+    let mut sanitized = if sanitized.trim().is_empty() || sanitized.trim_matches('.').is_empty() {
         "unnamed".to_string()
     } else {
         sanitized
     };
+    // Strip trailing dots and spaces (problematic on Windows)
+    sanitized = sanitized.trim_end_matches(['.', ' ']).to_string();
+    if sanitized.is_empty() {
+        sanitized = "unnamed".to_string();
+    }
+    if RESERVED.contains(&sanitized.to_uppercase().as_str()) {
+        sanitized = format!("project_{sanitized}");
+    }
     projects_dir().join(sanitized)
 }
 

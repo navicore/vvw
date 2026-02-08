@@ -550,7 +550,7 @@ fn handle_project_load(
     counter.0 = manifest
         .tracks
         .iter()
-        .map(|t| t.track_id + 1)
+        .map(|t| t.track_id.saturating_add(1))
         .max()
         .unwrap_or(0);
 

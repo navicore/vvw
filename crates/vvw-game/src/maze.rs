@@ -246,7 +246,7 @@ fn setup_maze(mut commands: Commands, startup_project: Option<Res<StartupProject
                 let next_id = manifest
                     .tracks
                     .iter()
-                    .map(|t| t.track_id + 1)
+                    .map(|t| t.track_id.saturating_add(1))
                     .max()
                     .unwrap_or(0);
                 commands.insert_resource(TrackIdCounter(next_id));
