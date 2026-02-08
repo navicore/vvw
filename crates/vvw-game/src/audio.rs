@@ -249,7 +249,9 @@ fn compute_spatial_targets(
     }
 }
 
-/// Interpolate current gain/pan toward targets and send to kira
+/// Interpolate current gain/pan toward targets and send to kira.
+/// Pauses tracks at zero gain to free audio thread resources;
+/// resumes them when they become audible again.
 #[allow(clippy::needless_pass_by_value)]
 fn interpolate_and_send(
     time: Res<Time>,
@@ -259,8 +261,9 @@ fn interpolate_and_send(
     let dt = time.delta_secs();
 
     for (track_icon, mut state) in &mut track_query {
-        let lerp_factor = (state.fade_speed * dt).min(1.0);
+        let was_silent = state.current_gain == 0.0;
 
+        let lerp_factor = (state.fade_speed * dt).min(1.0);
         state.current_gain += (state.target_gain - state.current_gain) * lerp_factor;
         state.current_pan += (state.target_pan - state.current_pan) * lerp_factor;
 
@@ -269,8 +272,20 @@ fn interpolate_and_send(
         }
 
         if let Some(Some(track)) = handles.handles.get_mut(track_icon.track_id) {
-            track.set_volume(state.current_gain);
-            track.set_panning(state.current_pan);
+            if state.current_gain == 0.0 {
+                // Fully silent — pause to save audio thread work
+                if !was_silent {
+                    track.set_volume(0.0);
+                    track.pause();
+                }
+            } else {
+                // Audible — resume if we were paused, then update volume/pan
+                if was_silent {
+                    track.resume();
+                }
+                track.set_volume(state.current_gain);
+                track.set_panning(state.current_pan);
+            }
         }
     }
 }
