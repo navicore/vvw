@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/vvw-audio",
+    "crates/vvw-core",
     "crates/vvw-game",
     "crates/vvw-light",
     "crates/vvw-app",
@@ -22,6 +23,7 @@ readme = "README.md"
 [workspace.dependencies]
 # Internal crates
 vvw-audio = { path = "crates/vvw-audio" }
+vvw-core = { path = "crates/vvw-core" }
 vvw-game = { path = "crates/vvw-game" }
 vvw-light = { path = "crates/vvw-light" }
 

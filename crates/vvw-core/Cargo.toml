@@ -1,15 +1,15 @@
 [package]
-name = "vvw-light"
+name = "vvw-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "VVW 2D lighting - SDF raymarching compute shader for point lights with tile occlusion"
+description = "VVW core types and math - platform-independent, WASM-safe"
 
 [dependencies]
-vvw-core.workspace = true
 bevy.workspace = true
 serde.workspace = true
+rand.workspace = true
 
 [lints]
 workspace = true
