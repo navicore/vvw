@@ -243,25 +243,49 @@ fn propose_room(rng: &mut impl Rng, state: &MazeGenState) -> Proposal {
                 // Right
                 let cy = source.y + source.height / 2;
                 let cx = source.x + source.width;
-                (cx, cy, cx + corridor_len, cy.saturating_sub(new_room_h / 2), true)
+                (
+                    cx,
+                    cy,
+                    cx + corridor_len,
+                    cy.saturating_sub(new_room_h / 2),
+                    true,
+                )
             }
             1 => {
                 // Up
                 let cx = source.x + source.width / 2;
                 let cy = source.y + source.height;
-                (cx, cy, cx.saturating_sub(new_room_w / 2), cy + corridor_len, false)
+                (
+                    cx,
+                    cy,
+                    cx.saturating_sub(new_room_w / 2),
+                    cy + corridor_len,
+                    false,
+                )
             }
             2 => {
                 // Left
                 let cy = source.y + source.height / 2;
                 let cx = source.x;
-                (cx, cy, cx.saturating_sub(corridor_len + new_room_w), cy.saturating_sub(new_room_h / 2), true)
+                (
+                    cx,
+                    cy,
+                    cx.saturating_sub(corridor_len + new_room_w),
+                    cy.saturating_sub(new_room_h / 2),
+                    true,
+                )
             }
             _ => {
                 // Down
                 let cx = source.x + source.width / 2;
                 let cy = source.y;
-                (cx, cy, cx.saturating_sub(new_room_w / 2), cy.saturating_sub(corridor_len + new_room_h), false)
+                (
+                    cx,
+                    cy,
+                    cx.saturating_sub(new_room_w / 2),
+                    cy.saturating_sub(corridor_len + new_room_h),
+                    false,
+                )
             }
         };
 
@@ -281,8 +305,12 @@ fn propose_room(rng: &mut impl Rng, state: &MazeGenState) -> Proposal {
 
 /// Returns the fraction of `b`'s area that overlaps with `a` (0.0 = no overlap, 1.0 = fully inside).
 fn overlap_fraction(a: &Room, b: &Room) -> f32 {
-    let ox = (a.x + a.width).min(b.x + b.width).saturating_sub(a.x.max(b.x));
-    let oy = (a.y + a.height).min(b.y + b.height).saturating_sub(a.y.max(b.y));
+    let ox = (a.x + a.width)
+        .min(b.x + b.width)
+        .saturating_sub(a.x.max(b.x));
+    let oy = (a.y + a.height)
+        .min(b.y + b.height)
+        .saturating_sub(a.y.max(b.y));
     let overlap_area = ox * oy;
     let b_area = b.width * b.height;
     if b_area == 0 {
