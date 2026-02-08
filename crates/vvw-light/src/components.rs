@@ -1,6 +1,7 @@
 //! Lighting components
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// A 2D point light that emits light in a circular radius.
 /// Attach as a child entity of the light source.
@@ -47,7 +48,7 @@ impl Default for AmbientLight2d {
 
 /// Tunable lighting parameters. Mutated by UI sliders; applied to
 /// actual `PointLight2d` / `AmbientLight2d` components each frame.
-#[derive(Resource, Clone)]
+#[derive(Resource, Debug, Clone, Serialize, Deserialize)]
 pub struct LightingConfig {
     pub ambient_brightness: f32,
     pub player_intensity: f32,

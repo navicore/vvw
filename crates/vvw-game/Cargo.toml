@@ -17,6 +17,7 @@ thiserror.workspace = true
 rand.workspace = true
 serde.workspace = true
 ron.workspace = true
+dirs.workspace = true
 tracing.workspace = true
 
 [lints]

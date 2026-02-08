@@ -1,14 +1,17 @@
 //! Audio integration: kira engine, spatial audio, drag-and-drop loading, egui UI
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use bevy::window::FileDragAndDrop;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use vvw_audio::{GameAudioManager, GameTrack};
 use vvw_light::{AmbientLight2d, LightingConfig, PointLight2d};
 
-use crate::maze::{MazeChanged, TrackIcon, TrackLight};
+use crate::maze::{Maze, MazeChanged, TrackIcon, TrackLight};
 use crate::mazegen::{self, MazeGenState};
 use crate::player::{Player, PlayerLight};
+use crate::project;
 use crate::spatial;
 use crate::tiles::TilePos;
 
@@ -47,17 +50,54 @@ impl Default for TrackAudioState {
     }
 }
 
+/// Raw audio file data retained for project saving
+pub struct TrackAudioFile {
+    pub original_filename: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Stores the raw audio bytes for each track, indexed by `track_id`.
+/// Used to save projects back to disk.
+#[derive(Resource, Default)]
+pub struct TrackAudioFiles {
+    pub files: HashMap<usize, TrackAudioFile>,
+}
+
+/// Message requesting the project be saved (carries the project name)
+#[derive(Message)]
+pub struct ProjectSaveRequested(pub String);
+
+/// Message requesting a project be loaded (carries the project name)
+#[derive(Message)]
+pub struct ProjectLoadRequested(pub String);
+
+/// UI state for the project name text field
+#[derive(Resource)]
+pub struct ProjectNameInput(pub String);
+
+impl Default for ProjectNameInput {
+    fn default() -> Self {
+        Self("my-maze".to_string())
+    }
+}
+
 /// Audio plugin: kira engine + spatial audio + drag-and-drop + egui panel
 pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LightingConfig>()
-            .add_systems(PostStartup, setup_audio)
+            .init_resource::<TrackAudioFiles>()
+            .init_resource::<ProjectNameInput>()
+            .add_message::<ProjectSaveRequested>()
+            .add_message::<ProjectLoadRequested>()
+            .add_systems(PostStartup, (setup_audio, load_project_audio).chain())
             .add_systems(
                 Update,
                 (
                     handle_file_drop,
+                    handle_project_save,
+                    handle_project_load,
                     compute_spatial_targets,
                     interpolate_and_send,
                     apply_lighting_config,
@@ -93,9 +133,10 @@ fn handle_file_drop(
     mut manager: Option<NonSendMut<GameAudioManager>>,
     mut handles: ResMut<TrackHandles>,
     mut counter: ResMut<TrackIdCounter>,
-    mut maze: ResMut<crate::maze::Maze>,
+    mut maze: ResMut<Maze>,
     mut state: ResMut<mazegen::MazeGenState>,
     mut maze_changed: MessageWriter<MazeChanged>,
+    mut track_audio: ResMut<TrackAudioFiles>,
 ) {
     let Some(ref mut manager) = manager else {
         return;
@@ -125,8 +166,15 @@ fn handle_file_drop(
             continue;
         };
 
+        // Retain a copy for project saving
+        let original_filename = path_buf
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
         // Add track to kira
-        let track = match manager.add_track(audio_bytes) {
+        let track = match manager.add_track(audio_bytes.clone()) {
             Ok(t) => t,
             Err(e) => {
                 tracing::error!("Failed to add track: {e}");
@@ -136,6 +184,15 @@ fn handle_file_drop(
 
         let track_id = counter.0;
         counter.0 += 1;
+
+        // Store raw audio for saving
+        track_audio.files.insert(
+            track_id,
+            TrackAudioFile {
+                original_filename,
+                bytes: audio_bytes,
+            },
+        );
 
         // Grow maze to accommodate new track
         let Some(_track_pos) = mazegen::grow_maze(&mut maze, &mut state, track_id) else {
@@ -219,13 +276,20 @@ fn interpolate_and_send(
 }
 
 /// Render the audio track panel with `bevy_egui`
-#[allow(clippy::needless_pass_by_value)]
+#[allow(
+    clippy::needless_pass_by_value,
+    clippy::too_many_arguments,
+    clippy::too_many_lines
+)]
 fn audio_ui_panel(
     mut contexts: EguiContexts,
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
     counter: Res<TrackIdCounter>,
     mut state: ResMut<MazeGenState>,
     mut lighting: ResMut<LightingConfig>,
+    mut project_name: ResMut<ProjectNameInput>,
+    mut save_events: MessageWriter<ProjectSaveRequested>,
+    mut load_events: MessageWriter<ProjectLoadRequested>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -235,6 +299,31 @@ fn audio_ui_panel(
         .resizable(false)
         .default_width(180.0)
         .show(ctx, |ui| {
+            // Project section
+            ui.collapsing("Project", |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Name:");
+                    ui.text_edit_singleline(&mut project_name.0);
+                });
+                let name_valid = !project_name.0.trim().is_empty();
+                ui.add_enabled_ui(name_valid, |ui| {
+                    if ui.button("Save").clicked() {
+                        save_events.write(ProjectSaveRequested(project_name.0.trim().to_string()));
+                    }
+                });
+
+                let saved = project::list_projects();
+                if !saved.is_empty() {
+                    ui.separator();
+                    ui.label("Saved projects:");
+                    for name in &saved {
+                        if ui.button(name).clicked() {
+                            load_events.write(ProjectLoadRequested(name.clone()));
+                        }
+                    }
+                }
+            });
+
             ui.heading("Audio Tracks");
             ui.separator();
 
@@ -341,5 +430,187 @@ fn apply_lighting_config(
         light.intensity = config.track_intensity;
         light.radius = config.track_radius;
         light.falloff = config.track_falloff;
+    }
+}
+
+/// Handle save requests: serialize current state to disk
+#[allow(clippy::needless_pass_by_value)]
+fn handle_project_save(
+    mut events: MessageReader<ProjectSaveRequested>,
+    maze: Res<Maze>,
+    state: Res<MazeGenState>,
+    lighting: Res<LightingConfig>,
+    track_audio: Res<TrackAudioFiles>,
+) {
+    let mut name = None;
+    for event in events.read() {
+        name = Some(event.0.clone());
+    }
+    let Some(project_name) = name else {
+        return;
+    };
+
+    let save_path = project::project_dir(&project_name);
+    match project::save_project(&save_path, &maze, &state, &lighting, &track_audio.files) {
+        Ok(()) => tracing::info!("Project '{project_name}' saved to {}", save_path.display()),
+        Err(e) => tracing::error!("Failed to save project '{project_name}': {e}"),
+    }
+}
+
+/// Handle load requests at runtime: replace all state from a saved project
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+fn handle_project_load(
+    mut events: MessageReader<ProjectLoadRequested>,
+    mut manager: Option<NonSendMut<GameAudioManager>>,
+    mut handles: ResMut<TrackHandles>,
+    mut counter: ResMut<TrackIdCounter>,
+    mut maze: ResMut<Maze>,
+    mut state: ResMut<MazeGenState>,
+    mut lighting: ResMut<LightingConfig>,
+    mut track_audio: ResMut<TrackAudioFiles>,
+    mut maze_changed: MessageWriter<MazeChanged>,
+    mut player_query: Query<&mut Transform, With<Player>>,
+    mut project_name: ResMut<ProjectNameInput>,
+) {
+    let mut load_name = None;
+    for event in events.read() {
+        load_name = Some(event.0.clone());
+    }
+    let Some(name) = load_name else {
+        return;
+    };
+
+    let path = project::project_dir(&name);
+    let (manifest, audio_bytes) = match project::load_project(&path) {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::error!("Failed to load project '{name}': {e}");
+            return;
+        }
+    };
+
+    // Stop all playing tracks
+    for handle in &mut handles.handles {
+        if let Some(track) = handle.as_mut() {
+            track.stop();
+        }
+    }
+    handles.handles.clear();
+
+    // Clear track audio files
+    track_audio.files.clear();
+
+    // Replace maze, gen state, and lighting
+    *maze = manifest.maze;
+    *state = MazeGenState {
+        rooms: manifest.rooms,
+        config: manifest.maze_config,
+    };
+    *lighting = manifest.lighting;
+
+    // Set counter to max track_id + 1
+    counter.0 = manifest
+        .tracks
+        .iter()
+        .map(|t| t.track_id + 1)
+        .max()
+        .unwrap_or(0);
+
+    // Store audio files and replay through kira
+    let Some(ref mut manager) = manager else {
+        tracing::error!("No audio manager available for loading tracks");
+        maze_changed.write(MazeChanged);
+        return;
+    };
+
+    for entry in &manifest.tracks {
+        if let Some(bytes) = audio_bytes.get(&entry.track_id) {
+            track_audio.files.insert(
+                entry.track_id,
+                TrackAudioFile {
+                    original_filename: entry.original_filename.clone(),
+                    bytes: bytes.clone(),
+                },
+            );
+
+            match manager.add_track(bytes.clone()) {
+                Ok(track) => {
+                    while handles.handles.len() <= entry.track_id {
+                        handles.handles.push(None);
+                    }
+                    handles.handles[entry.track_id] = Some(track);
+                    tracing::info!(
+                        "Loaded track {} ({})",
+                        entry.track_id,
+                        entry.original_filename
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to load track {} ({}): {e}",
+                        entry.track_id,
+                        entry.original_filename
+                    );
+                }
+            }
+        }
+    }
+
+    // Move player to new start position
+    if let Some(start) = maze.find_player_start() {
+        let world_pos = start.to_world();
+        for mut transform in &mut player_query {
+            transform.translation.x = world_pos.x;
+            transform.translation.y = world_pos.y;
+        }
+    }
+
+    // Update the name input to match the loaded project
+    project_name.0.clone_from(&name);
+
+    maze_changed.write(MazeChanged);
+    tracing::info!("Project '{name}' loaded from {}", path.display());
+}
+
+/// At `PostStartup`, replay audio from a loaded project.
+/// This runs after `setup_audio` so the kira manager is available.
+#[allow(clippy::needless_pass_by_value)]
+fn load_project_audio(
+    mut manager: Option<NonSendMut<GameAudioManager>>,
+    mut handles: ResMut<TrackHandles>,
+    track_audio: Res<TrackAudioFiles>,
+) {
+    if track_audio.files.is_empty() || !handles.handles.is_empty() {
+        return;
+    }
+
+    let Some(ref mut manager) = manager else {
+        return;
+    };
+
+    let mut entries: Vec<(&usize, &TrackAudioFile)> = track_audio.files.iter().collect();
+    entries.sort_by_key(|(id, _)| *id);
+
+    for (track_id, audio_file) in entries {
+        match manager.add_track(audio_file.bytes.clone()) {
+            Ok(track) => {
+                while handles.handles.len() <= *track_id {
+                    handles.handles.push(None);
+                }
+                handles.handles[*track_id] = Some(track);
+                tracing::info!(
+                    "Replayed track {} ({}) from loaded project",
+                    track_id,
+                    audio_file.original_filename
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to replay track {} ({}): {e}",
+                    track_id,
+                    audio_file.original_filename
+                );
+            }
+        }
     }
 }

@@ -1,0 +1,230 @@
+//! Project persistence: save and load maze projects to/from disk
+//!
+//! A project directory contains:
+//! - `project.ron` — serialized manifest (maze, configs, track metadata)
+//! - `audio/` — raw audio files keyed by track ID
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+use vvw_light::LightingConfig;
+
+use crate::audio::TrackAudioFile;
+use crate::maze::Maze;
+use crate::mazegen::{MazeGenConfig, MazeGenState, Room};
+
+/// Resource holding the project name from the CLI `--project` arg.
+/// When set, the named project is loaded on startup.
+#[derive(Resource)]
+pub struct StartupProject(pub Option<String>);
+
+/// Returns the base directory where all projects are stored.
+///
+/// - macOS: `~/Library/Application Support/vvw/projects/`
+/// - Linux: `~/.local/share/vvw/projects/`
+/// - Windows: `%APPDATA%/vvw/projects/`
+///
+/// Falls back to `./vvw-projects/` if the platform data dir can't be determined.
+pub fn projects_dir() -> PathBuf {
+    dirs::data_dir().map_or_else(
+        || PathBuf::from("./vvw-projects"),
+        |d| d.join("vvw").join("projects"),
+    )
+}
+
+/// Returns the directory for a specific named project.
+pub fn project_dir(name: &str) -> PathBuf {
+    projects_dir().join(name)
+}
+
+/// List saved project names by scanning the projects directory.
+/// Returns an empty vec if the directory doesn't exist yet.
+pub fn list_projects() -> Vec<String> {
+    let base = projects_dir();
+    let Ok(entries) = std::fs::read_dir(&base) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .filter_map(|e| {
+            let entry = e.ok()?;
+            if !entry.file_type().ok()?.is_dir() {
+                return None;
+            }
+            // Only include directories that contain a project.ron
+            let has_manifest = entry.path().join("project.ron").exists();
+            if has_manifest {
+                entry.file_name().to_str().map(String::from)
+            } else {
+                None
+            }
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// Metadata for a single audio track in the project
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackEntry {
+    pub track_id: usize,
+    pub original_filename: String,
+}
+
+/// Serialized project manifest
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectManifest {
+    pub maze: Maze,
+    pub rooms: Vec<Room>,
+    pub maze_config: MazeGenConfig,
+    pub lighting: LightingConfig,
+    pub tracks: Vec<TrackEntry>,
+}
+
+/// Errors that can occur during project save/load
+#[derive(Debug, thiserror::Error)]
+pub enum ProjectError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("serialization error: {0}")]
+    Serialize(#[from] ron::Error),
+    #[error("deserialization error: {0}")]
+    Deserialize(#[from] ron::error::SpannedError),
+}
+
+/// Save the current game state to a project directory.
+#[allow(clippy::implicit_hasher)]
+pub fn save_project(
+    path: &Path,
+    maze: &Maze,
+    gen_state: &MazeGenState,
+    lighting: &LightingConfig,
+    track_audio: &HashMap<usize, TrackAudioFile>,
+) -> Result<(), ProjectError> {
+    // Create directories
+    let audio_dir = path.join("audio");
+    std::fs::create_dir_all(&audio_dir)?;
+
+    // Write audio files
+    for (track_id, audio_file) in track_audio {
+        let audio_path = audio_dir.join(format!("{track_id}.audio"));
+        std::fs::write(&audio_path, &audio_file.bytes)?;
+    }
+
+    // Build track entries
+    let tracks: Vec<TrackEntry> = track_audio
+        .iter()
+        .map(|(track_id, audio_file)| TrackEntry {
+            track_id: *track_id,
+            original_filename: audio_file.original_filename.clone(),
+        })
+        .collect();
+
+    // Build manifest
+    let manifest = ProjectManifest {
+        maze: maze.clone(),
+        rooms: gen_state.rooms.clone(),
+        maze_config: gen_state.config.clone(),
+        lighting: lighting.clone(),
+        tracks,
+    };
+
+    // Serialize and write
+    let ron_string = ron::ser::to_string_pretty(&manifest, ron::ser::PrettyConfig::default())?;
+    std::fs::write(path.join("project.ron"), ron_string)?;
+
+    Ok(())
+}
+
+/// Load a project from a directory, returning the manifest and audio bytes.
+pub fn load_project(
+    path: &Path,
+) -> Result<(ProjectManifest, HashMap<usize, Vec<u8>>), ProjectError> {
+    // Read and deserialize manifest
+    let ron_string = std::fs::read_to_string(path.join("project.ron"))?;
+    let manifest: ProjectManifest = ron::from_str(&ron_string)?;
+
+    // Read audio files
+    let audio_dir = path.join("audio");
+    let mut audio_bytes = HashMap::new();
+    for entry in &manifest.tracks {
+        let audio_path = audio_dir.join(format!("{}.audio", entry.track_id));
+        let bytes = std::fs::read(&audio_path)?;
+        audio_bytes.insert(entry.track_id, bytes);
+    }
+
+    Ok((manifest, audio_bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mazegen::generate_initial_maze;
+
+    #[test]
+    fn round_trip_empty_project() {
+        let config = MazeGenConfig::default();
+        let (maze, state) = generate_initial_maze(&config);
+        let lighting = LightingConfig::default();
+        let track_audio = HashMap::new();
+
+        let dir = std::env::temp_dir().join("vvw_test_empty_project");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        save_project(&dir, &maze, &state, &lighting, &track_audio).unwrap();
+        let (loaded_manifest, loaded_audio) = load_project(&dir).unwrap();
+
+        assert_eq!(loaded_manifest.maze.width, maze.width);
+        assert_eq!(loaded_manifest.maze.height, maze.height);
+        assert_eq!(loaded_manifest.rooms.len(), state.rooms.len());
+        assert!(loaded_audio.is_empty());
+        assert!(loaded_manifest.tracks.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn round_trip_with_tracks() {
+        let config = MazeGenConfig::default();
+        let (maze, state) = generate_initial_maze(&config);
+        let lighting = LightingConfig::default();
+
+        let mut track_audio = HashMap::new();
+        track_audio.insert(
+            0,
+            TrackAudioFile {
+                original_filename: "song.mp3".to_string(),
+                bytes: vec![0xFF, 0xFB, 0x90, 0x00], // fake mp3 header
+            },
+        );
+        track_audio.insert(
+            1,
+            TrackAudioFile {
+                original_filename: "beat.wav".to_string(),
+                bytes: vec![0x52, 0x49, 0x46, 0x46], // "RIFF"
+            },
+        );
+
+        let dir = std::env::temp_dir().join("vvw_test_tracks_project");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        save_project(&dir, &maze, &state, &lighting, &track_audio).unwrap();
+        let (loaded_manifest, loaded_audio) = load_project(&dir).unwrap();
+
+        assert_eq!(loaded_manifest.tracks.len(), 2);
+        assert_eq!(loaded_audio.len(), 2);
+        assert_eq!(loaded_audio[&0], vec![0xFF, 0xFB, 0x90, 0x00]);
+        assert_eq!(loaded_audio[&1], vec![0x52, 0x49, 0x46, 0x46]);
+
+        // Verify filenames preserved
+        let track0 = loaded_manifest
+            .tracks
+            .iter()
+            .find(|t| t.track_id == 0)
+            .unwrap();
+        assert_eq!(track0.original_filename, "song.mp3");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

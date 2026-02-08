@@ -10,6 +10,7 @@ mod camera;
 mod maze;
 mod mazegen;
 mod player;
+pub mod project;
 mod spatial;
 mod tiles;
 
@@ -17,6 +18,7 @@ pub use audio::AudioPlugin;
 pub use camera::CameraPlugin;
 pub use maze::{Maze, MazePlugin};
 pub use player::{Player, PlayerPlugin};
+pub use project::StartupProject;
 pub use tiles::{TileKind, TilePos};
 
 use avian2d::PhysicsPlugins;
