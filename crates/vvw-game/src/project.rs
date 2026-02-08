@@ -35,8 +35,25 @@ pub fn projects_dir() -> PathBuf {
 }
 
 /// Returns the directory for a specific named project.
+/// Sanitizes the name to prevent path traversal.
 pub fn project_dir(name: &str) -> PathBuf {
-    projects_dir().join(name)
+    let sanitized: String = name
+        .chars()
+        .map(|c| {
+            if c == '/' || c == '\\' || c == '\0' {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    // Reject pure-dot names like "." and ".."
+    let sanitized = if sanitized.trim_matches('.').is_empty() {
+        "unnamed".to_string()
+    } else {
+        sanitized
+    };
+    projects_dir().join(sanitized)
 }
 
 /// List saved project names by scanning the projects directory.
@@ -226,5 +243,22 @@ mod tests {
         assert_eq!(track0.original_filename, "song.mp3");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn project_dir_sanitizes_path_traversal() {
+        let base = projects_dir();
+
+        // Slashes replaced with underscores
+        assert_eq!(project_dir("../../etc"), base.join(".._.._etc"));
+        assert_eq!(project_dir("a/b\\c"), base.join("a_b_c"));
+
+        // Dot-only names rejected
+        assert_eq!(project_dir(".."), base.join("unnamed"));
+        assert_eq!(project_dir("."), base.join("unnamed"));
+
+        // Normal names pass through
+        assert_eq!(project_dir("my-maze"), base.join("my-maze"));
+        assert_eq!(project_dir("cool project"), base.join("cool project"));
     }
 }

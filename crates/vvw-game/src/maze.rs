@@ -383,7 +383,7 @@ fn respawn_maze_tiles(
         return;
     }
 
-    // Despawn old tiles
+    // Despawn old tiles (Bevy 0.18 despawn() handles children automatically)
     for entity in &tile_query {
         commands.entity(entity).despawn();
     }

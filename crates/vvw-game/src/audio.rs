@@ -98,11 +98,9 @@ impl Plugin for AudioPlugin {
                     handle_file_drop,
                     handle_project_save,
                     handle_project_load,
-                    compute_spatial_targets,
-                    interpolate_and_send,
+                    (compute_spatial_targets, interpolate_and_send).chain(),
                     apply_lighting_config,
-                )
-                    .chain(),
+                ),
             )
             .add_systems(EguiPrimaryContextPass, audio_ui_panel);
     }
@@ -426,7 +424,7 @@ fn audio_ui_panel(
         });
 }
 
-/// Push `LightingConfig` values to the actual light components each frame.
+/// Push `LightingConfig` values to actual light components when config changes.
 #[allow(clippy::needless_pass_by_value)]
 fn apply_lighting_config(
     config: Res<LightingConfig>,
@@ -434,6 +432,10 @@ fn apply_lighting_config(
     mut player_lights: Query<&mut PointLight2d, (With<PlayerLight>, Without<TrackLight>)>,
     mut track_lights: Query<&mut PointLight2d, (With<TrackLight>, Without<PlayerLight>)>,
 ) {
+    if !config.is_changed() {
+        return;
+    }
+
     ambient.brightness = config.ambient_brightness;
 
     for mut light in &mut player_lights {
@@ -496,7 +498,7 @@ fn handle_project_load(
     };
 
     let path = project::project_dir(&name);
-    let (manifest, audio_bytes) = match project::load_project(&path) {
+    let (manifest, mut audio_bytes) = match project::load_project(&path) {
         Ok(result) => result,
         Err(e) => {
             tracing::error!("Failed to load project '{name}': {e}");
@@ -539,16 +541,18 @@ fn handle_project_load(
     };
 
     for entry in &manifest.tracks {
-        if let Some(bytes) = audio_bytes.get(&entry.track_id) {
+        if let Some(bytes) = audio_bytes.remove(&entry.track_id) {
+            // Clone for kira; move the original into storage (avoids double clone)
+            let kira_bytes = bytes.clone();
             track_audio.files.insert(
                 entry.track_id,
                 TrackAudioFile {
                     original_filename: entry.original_filename.clone(),
-                    bytes: bytes.clone(),
+                    bytes,
                 },
             );
 
-            match manager.add_track(bytes.clone()) {
+            match manager.add_track(kira_bytes) {
                 Ok(track) => {
                     while handles.handles.len() <= entry.track_id {
                         handles.handles.push(None);
