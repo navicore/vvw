@@ -1,25 +1,23 @@
-//! Player entity and movement
+//! Player entity and physics-based movement
 
+use avian2d::prelude::*;
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
+use vvw_light::PointLight2d;
 
 use crate::maze::Maze;
-use crate::tiles::{Direction, TILE_SIZE, TilePos};
+use crate::tiles::{TILE_SIZE, TilePos};
 
 /// Marker component for the player entity
 #[derive(Component)]
 pub struct Player;
 
-/// Player movement state
+/// Player movement configuration
 #[derive(Component)]
 pub struct PlayerMovement {
-    /// Current grid position
+    /// Current tile position (derived from Transform for spatial audio)
     pub tile_pos: TilePos,
-    /// Target world position (for smooth animation)
-    pub target_world: Vec2,
-    /// Whether the player is currently moving
-    pub is_moving: bool,
-    /// Movement speed in tiles per second
+    /// Movement speed (impulse magnitude)
     pub speed: f32,
 }
 
@@ -27,9 +25,7 @@ impl Default for PlayerMovement {
     fn default() -> Self {
         Self {
             tile_pos: TilePos::new(0, 0),
-            target_world: Vec2::ZERO,
-            is_moving: false,
-            speed: 8.0, // tiles per second
+            speed: 200.0, // Physics impulse units
         }
     }
 }
@@ -44,12 +40,12 @@ pub enum PlayerAction {
 }
 
 impl PlayerAction {
-    fn to_direction(self) -> Direction {
+    fn as_vec2(self) -> Vec2 {
         match self {
-            Self::Up => Direction::Up,
-            Self::Down => Direction::Down,
-            Self::Left => Direction::Left,
-            Self::Right => Direction::Right,
+            Self::Up => Vec2::Y,
+            Self::Down => Vec2::NEG_Y,
+            Self::Left => Vec2::NEG_X,
+            Self::Right => Vec2::X,
         }
     }
 
@@ -74,10 +70,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<PlayerAction>::default())
             .add_systems(PostStartup, spawn_player)
-            .add_systems(
-                Update,
-                (handle_player_input, update_player_position).chain(),
-            );
+            .add_systems(Update, (handle_player_input, sync_tile_pos).chain());
     }
 }
 
@@ -90,85 +83,79 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
     let start_pos = maze.find_player_start().unwrap_or(TilePos::new(1, 1));
     let world_pos = start_pos.to_world();
 
-    commands.spawn((
-        Player,
-        PlayerMovement {
-            tile_pos: start_pos,
-            target_world: world_pos,
-            ..default()
-        },
-        Sprite {
-            color: PLAYER_COLOR,
-            custom_size: Some(Vec2::splat(TILE_SIZE * 0.8)),
-            ..default()
-        },
-        Transform::from_xyz(world_pos.x, world_pos.y, 2.0), // Above tiles
-        PlayerAction::input_map(),
-    ));
+    let player_size = TILE_SIZE * 0.8;
+
+    commands
+        .spawn((
+            Player,
+            PlayerMovement {
+                tile_pos: start_pos,
+                ..default()
+            },
+            Sprite {
+                color: PLAYER_COLOR,
+                custom_size: Some(Vec2::splat(player_size)),
+                ..default()
+            },
+            Transform::from_xyz(world_pos.x, world_pos.y, 2.0), // Above tiles
+            PlayerAction::input_map(),
+            // Physics components
+            RigidBody::Dynamic,
+            Collider::rectangle(player_size, player_size),
+            LockedAxes::ROTATION_LOCKED,
+            Friction::new(0.7),
+            Restitution::new(0.3), // Slightly bouncy off walls
+        ))
+        .with_child(PointLight2d {
+            color: Color::srgb(1.0, 0.9, 0.6), // Warm lantern
+            intensity: 0.4,
+            radius: 100.0,
+            falloff: 0.6,
+        });
 }
 
 #[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value
 fn handle_player_input(
-    mut query: Query<(&ActionState<PlayerAction>, &mut PlayerMovement), With<Player>>,
-    maze: Res<Maze>,
+    mut query: Query<
+        (
+            &ActionState<PlayerAction>,
+            &PlayerMovement,
+            &mut LinearVelocity,
+        ),
+        With<Player>,
+    >,
 ) {
-    for (action_state, mut movement) in &mut query {
-        // Only accept input when not already moving
-        if movement.is_moving {
-            continue;
-        }
+    for (action_state, movement, mut velocity) in &mut query {
+        let mut direction = Vec2::ZERO;
 
-        // Check each direction for input
         for action in [
             PlayerAction::Up,
             PlayerAction::Down,
             PlayerAction::Left,
             PlayerAction::Right,
         ] {
-            if action_state.just_pressed(&action) {
-                let direction = action.to_direction();
-                let target_tile = movement.tile_pos.neighbor(direction);
-
-                // Check if target tile is walkable
-                if maze.is_walkable(&target_tile) {
-                    movement.tile_pos = target_tile;
-                    movement.target_world = target_tile.to_world();
-                    movement.is_moving = true;
-                    break; // Only process one direction per frame
-                }
+            if action_state.pressed(&action) {
+                direction += action.as_vec2();
             }
         }
+
+        // Normalize diagonal movement and apply speed
+        if direction != Vec2::ZERO {
+            direction = direction.normalize();
+        }
+
+        // Set velocity directly for responsive movement with physics collision
+        velocity.0 = direction * movement.speed;
     }
 }
 
-#[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value
-fn update_player_position(
-    time: Res<Time>,
-    mut query: Query<(&mut Transform, &mut PlayerMovement), With<Player>>,
-) {
-    for (mut transform, mut movement) in &mut query {
-        if !movement.is_moving {
-            continue;
-        }
-
-        let current = transform.translation.truncate();
-        let target = movement.target_world;
-        let distance = current.distance(target);
-
-        // Movement speed in world units per second
-        let speed = movement.speed * TILE_SIZE;
-        let step = speed * time.delta_secs();
-
-        if distance <= step {
-            // Arrived at target
-            transform.translation.x = target.x;
-            transform.translation.y = target.y;
-            movement.is_moving = false;
-        } else {
-            // Move toward target
-            let direction = (target - current).normalize();
-            transform.translation.x += direction.x * step;
-            transform.translation.y += direction.y * step;
+/// Keep `tile_pos` in sync with the physics-driven `Transform`
+#[allow(clippy::needless_pass_by_value)]
+fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player>>) {
+    for (transform, mut movement) in &mut query {
+        let new_tile_pos = TilePos::from_world(transform.translation.truncate());
+        if new_tile_pos != movement.tile_pos {
+            movement.tile_pos = new_tile_pos;
         }
     }
 }

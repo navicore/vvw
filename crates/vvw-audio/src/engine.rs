@@ -1,155 +1,84 @@
-use cpal::Stream;
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+//! Kira-based audio engine wrapper
+//!
+//! Provides [`GameAudioManager`] for managing the audio thread and
+//! [`GameTrack`] handles for per-track volume and panning control.
 
-use crate::comms::{AudioChannels, AudioCommand, AudioEvent};
-use crate::sampler::LoopingSampler;
-use crate::types::SampleRate;
+use std::io::Cursor;
 
-/// Audio engine configuration
-#[derive(Debug, Clone)]
-pub struct AudioConfig {
-    pub sample_rate: SampleRate,
-    pub block_size: usize,
-}
-
-/// A single audio track with a looping sampler and gain
-pub struct Track {
-    pub sampler: LoopingSampler,
-    pub gain: f32,
-}
+use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
+use kira::{AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Tween};
 
 /// Errors from the audio engine
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
-    #[error("no output device found")]
-    NoOutputDevice,
-    #[error("no supported output config: {0}")]
-    NoSupportedConfig(String),
-    #[error("failed to build stream: {0}")]
-    BuildStream(String),
-    #[error("failed to start stream: {0}")]
-    PlayStream(String),
+    #[error("failed to initialize audio manager: {0}")]
+    Init(String),
+    #[error("failed to load audio data: {0}")]
+    LoadAudio(String),
+    #[error("failed to play sound: {0}")]
+    PlaySound(String),
 }
 
-/// The audio engine manages the cpal output stream
-pub struct AudioEngine {
-    pub config: AudioConfig,
-    /// Kept alive to prevent the stream from being dropped
-    _stream: Option<Stream>,
+/// Wraps kira's `AudioManager`. May be `!Send` on some platforms,
+/// so store as a `NonSend` Bevy resource.
+pub struct GameAudioManager {
+    manager: AudioManager<DefaultBackend>,
 }
 
-impl AudioEngine {
-    /// Start the audio engine with the given tracks and communication channels.
-    pub fn start(tracks: Vec<Track>, channels: AudioChannels) -> Result<Self, AudioError> {
-        let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .ok_or(AudioError::NoOutputDevice)?;
+impl GameAudioManager {
+    /// Create a new audio manager (starts kira's dedicated audio thread).
+    pub fn new() -> Result<Self, AudioError> {
+        let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
+            .map_err(|_| AudioError::Init("failed to create audio manager".into()))?;
+        tracing::info!("Kira audio manager initialized");
+        Ok(Self { manager })
+    }
 
-        let supported_config = device
-            .default_output_config()
-            .map_err(|e| AudioError::NoSupportedConfig(e.to_string()))?;
+    /// Load audio from raw bytes and play as a looping sound.
+    /// Returns a [`GameTrack`] handle for controlling volume and panning.
+    /// The track starts silent; the game's spatial system fades it in.
+    pub fn add_track(&mut self, audio_bytes: Vec<u8>) -> Result<GameTrack, AudioError> {
+        let cursor = Cursor::new(audio_bytes);
+        let sound_data = StaticSoundData::from_cursor(cursor)
+            .map_err(|e| AudioError::LoadAudio(e.to_string()))?
+            .loop_region(..)
+            .volume(Decibels(-60.0)); // Start near-silent
 
-        let sample_rate = supported_config.sample_rate().0;
-        let channel_count = supported_config.channels() as usize;
-        let sample_format = supported_config.sample_format();
+        let handle = self
+            .manager
+            .play(sound_data)
+            .map_err(|e| AudioError::PlaySound(e.to_string()))?;
 
-        tracing::info!(
-            "Audio device: {:?}, sample_rate={sample_rate}, channels={channel_count}, format={sample_format:?}",
-            device.name().unwrap_or_default()
-        );
+        Ok(GameTrack { handle })
+    }
+}
 
-        let config: cpal::StreamConfig = supported_config.into();
-        let block_size = 512;
+/// Handle for a single playing audio track.
+/// `Send + Sync` — safe to store in Bevy resources and components.
+pub struct GameTrack {
+    handle: StaticSoundHandle,
+}
 
-        // Send initialization event before moving channels into the closure
-        let mut event_tx = channels.event_tx;
-        let _ = event_tx.push(AudioEvent::EngineInitialized { sample_rate });
+impl GameTrack {
+    /// Set volume from linear amplitude (0.0 = silence, 1.0 = unity gain).
+    /// Converts to decibels internally for kira.
+    pub fn set_volume(&mut self, amplitude: f32) {
+        let db = if amplitude <= 0.001 {
+            Decibels(-60.0)
+        } else {
+            Decibels(20.0 * amplitude.log10())
+        };
+        self.handle.set_volume(db, Tween::default());
+    }
 
-        let mut command_rx = channels.command_rx;
-        let mut tracks = tracks;
-        let mut is_running = false;
+    /// Set stereo panning (-1.0 = left, 0.0 = center, 1.0 = right).
+    /// Matches kira's panning convention directly.
+    pub fn set_panning(&mut self, pan: f32) {
+        self.handle.set_panning(pan, Tween::default());
+    }
 
-        // Pre-allocate scratch buffers
-        let mut scratch_left = vec![0.0_f32; block_size];
-        let mut scratch_right = vec![0.0_f32; block_size];
-
-        let stream = device
-            .build_output_stream(
-                &config,
-                move |output: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    // Process commands (non-blocking)
-                    while let Ok(cmd) = command_rx.pop() {
-                        match cmd {
-                            AudioCommand::SetTrackGain { track_id, gain } => {
-                                if let Some(track) = tracks.get_mut(track_id) {
-                                    track.gain = gain;
-                                }
-                            }
-                            AudioCommand::Start => {
-                                is_running = true;
-                                let _ = event_tx.push(AudioEvent::Started);
-                            }
-                            AudioCommand::Stop => {
-                                is_running = false;
-                                let _ = event_tx.push(AudioEvent::Stopped);
-                            }
-                        }
-                    }
-
-                    let num_frames = output.len() / channel_count;
-
-                    if !is_running || tracks.is_empty() {
-                        output.fill(0.0);
-                        return;
-                    }
-
-                    // Ensure scratch buffers are large enough
-                    if scratch_left.len() < num_frames {
-                        scratch_left.resize(num_frames, 0.0);
-                        scratch_right.resize(num_frames, 0.0);
-                    }
-
-                    // Clear output
-                    output.fill(0.0);
-
-                    // Mix all tracks
-                    for track in &mut tracks {
-                        track
-                            .sampler
-                            .generate(&mut scratch_left, &mut scratch_right, num_frames);
-
-                        let gain = track.gain;
-                        for i in 0..num_frames {
-                            let base = i * channel_count;
-                            // Left channel
-                            if base < output.len() {
-                                output[base] += scratch_left[i] * gain;
-                            }
-                            // Right channel
-                            if base + 1 < output.len() {
-                                output[base + 1] += scratch_right[i] * gain;
-                            }
-                        }
-                    }
-                },
-                move |err| {
-                    tracing::error!("Audio stream error: {err}");
-                },
-                None,
-            )
-            .map_err(|e| AudioError::BuildStream(e.to_string()))?;
-
-        stream
-            .play()
-            .map_err(|e| AudioError::PlayStream(e.to_string()))?;
-
-        Ok(Self {
-            config: AudioConfig {
-                sample_rate,
-                block_size,
-            },
-            _stream: Some(stream),
-        })
+    /// Stop playback of this track.
+    pub fn stop(&mut self) {
+        self.handle.stop(Tween::default());
     }
 }

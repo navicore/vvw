@@ -1,140 +1,258 @@
-use std::f32::consts::TAU;
-use std::sync::Mutex;
+//! Audio integration: kira engine, spatial audio, drag-and-drop loading, egui UI
 
 use bevy::prelude::*;
-use vvw_audio::{AudioCommand, AudioEngine, AudioEvent, LoopingSampler, Track, create_channels};
+use bevy::window::FileDragAndDrop;
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
+use vvw_audio::{GameAudioManager, GameTrack};
 
-use crate::maze::{Maze, TrackIcon};
-use crate::player::{Player, PlayerMovement};
+use crate::maze::{MazeChanged, TrackIcon};
+use crate::mazegen;
+use crate::player::Player;
+use crate::spatial;
 use crate::tiles::TilePos;
 
-/// Resource wrapping the command sender (Mutex for Sync)
-#[derive(Resource)]
-pub struct AudioCommandSender(Mutex<rtrb::Producer<AudioCommand>>);
+/// Holds all active kira track handles, indexed by `track_id`
+#[derive(Resource, Default)]
+pub struct TrackHandles {
+    handles: Vec<Option<GameTrack>>,
+}
 
-/// Resource wrapping the event receiver (Mutex for Sync)
+/// Counter for track IDs
 #[derive(Resource)]
-pub struct AudioEventReceiver(Mutex<rtrb::Consumer<AudioEvent>>);
+pub struct TrackIdCounter(pub usize);
 
-/// Audio plugin that sets up audio engine integration with Bevy
+/// Per-track audio state for smooth interpolation
+#[derive(Component)]
+pub struct TrackAudioState {
+    pub target_gain: f32,
+    pub current_gain: f32,
+    pub target_pan: f32,
+    pub current_pan: f32,
+    /// Interpolation speed: 2.0 means full fade in 0.5s
+    pub fade_speed: f32,
+    pub visible: bool,
+}
+
+impl Default for TrackAudioState {
+    fn default() -> Self {
+        Self {
+            target_gain: 0.0,
+            current_gain: 0.0,
+            target_pan: 0.0,
+            current_pan: 0.0,
+            fade_speed: 2.0,
+            visible: false,
+        }
+    }
+}
+
+/// Audio plugin: kira engine + spatial audio + drag-and-drop + egui panel
 pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, setup_audio)
-            .add_systems(Update, (update_track_gains, poll_audio_events));
+            .add_systems(
+                Update,
+                (
+                    handle_file_drop,
+                    compute_spatial_targets,
+                    interpolate_and_send,
+                )
+                    .chain(),
+            )
+            .add_systems(EguiPrimaryContextPass, audio_ui_panel);
     }
 }
 
-/// Generate a sine wave as interleaved stereo data at the given frequency
-fn generate_sine(frequency: f32, sample_rate: u32, duration_secs: f32) -> Vec<f32> {
-    let num_frames = (sample_rate as f32 * duration_secs) as usize;
-    let mut data = Vec::with_capacity(num_frames * 2);
-    for i in 0..num_frames {
-        let t = i as f32 / sample_rate as f32;
-        let sample = (TAU * frequency * t).sin() * 0.3; // 0.3 amplitude to avoid clipping
-        data.push(sample); // left
-        data.push(sample); // right
-    }
-    data
-}
-
+/// Initialize the kira audio manager
 fn setup_audio(world: &mut World) {
-    let track_positions = world.resource::<Maze>().find_track_icons();
-    let num_tracks = track_positions.len();
-
-    if num_tracks == 0 {
-        tracing::warn!("No track icons found in maze, skipping audio setup");
-        return;
-    }
-
-    // Use 44100 for sine generation; the engine will use the device's actual rate
-    // but sine waves are simple enough that resampling artifacts are negligible
-    let gen_sample_rate = 44100;
-    let duration = 2.0; // 2 second loops
-
-    // Frequencies for a C major chord: C4, E4, G4
-    let frequencies = [261.63, 329.63, 392.00];
-
-    let tracks: Vec<Track> = (0..num_tracks)
-        .map(|i| {
-            let freq = frequencies[i % frequencies.len()];
-            let data = generate_sine(freq, gen_sample_rate, duration);
-            tracing::info!(
-                "Track {i}: {freq}Hz sine at position ({}, {})",
-                track_positions[i].x,
-                track_positions[i].y
-            );
-            Track {
-                sampler: LoopingSampler::new(data),
-                gain: 0.0, // Start silent
-            }
-        })
-        .collect();
-
-    let (ui_channels, audio_channels) = create_channels(256);
-
-    // Send start command before handing off channels
-    let mut command_tx = ui_channels.command_tx;
-    let _ = command_tx.push(AudioCommand::Start);
-
-    match AudioEngine::start(tracks, audio_channels) {
-        Ok(engine) => {
-            tracing::info!("Audio engine started successfully");
-            world.insert_resource(AudioCommandSender(Mutex::new(command_tx)));
-            world.insert_resource(AudioEventReceiver(Mutex::new(ui_channels.event_rx)));
-            // Keep the engine alive for the lifetime of the app using insert_non_send_resource
-            world.insert_non_send_resource(AudioEngineHolder(engine));
+    match GameAudioManager::new() {
+        Ok(manager) => {
+            tracing::info!("Kira audio manager started");
+            world.insert_non_send_resource(manager);
+            world.insert_resource(TrackHandles::default());
+            world.insert_resource(TrackIdCounter(0));
         }
         Err(e) => {
-            tracing::error!("Failed to start audio engine: {e}");
+            tracing::error!("Failed to start audio manager: {e}");
+            // Insert resources anyway so systems don't panic
+            world.insert_resource(TrackHandles::default());
+            world.insert_resource(TrackIdCounter(0));
         }
     }
 }
 
-/// Non-send resource to keep the audio engine (and its cpal stream) alive.
-/// `cpal::Stream` is not `Send`+`Sync` so we must use `NonSend` via `World`.
-struct AudioEngineHolder(#[allow(dead_code)] AudioEngine);
-
-#[allow(clippy::needless_pass_by_value)]
-fn update_track_gains(
-    sender: Option<Res<AudioCommandSender>>,
-    player_query: Query<&PlayerMovement, With<Player>>,
-    track_query: Query<(&TrackIcon, &TilePos)>,
+/// Handle file drag-and-drop: load audio, grow maze, create track
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+fn handle_file_drop(
+    mut drop_events: MessageReader<FileDragAndDrop>,
+    mut manager: Option<NonSendMut<GameAudioManager>>,
+    mut handles: ResMut<TrackHandles>,
+    mut counter: ResMut<TrackIdCounter>,
+    mut maze: ResMut<crate::maze::Maze>,
+    mut state: ResMut<mazegen::MazeGenState>,
+    mut maze_changed: MessageWriter<MazeChanged>,
 ) {
-    let Some(sender) = sender else { return };
-    let Ok(movement) = player_query.single() else {
+    let Some(ref mut manager) = manager else {
         return;
     };
 
-    let Ok(mut tx) = sender.0.lock() else { return };
+    let mut any_added = false;
 
-    for (track_icon, tile_pos) in &track_query {
-        let distance = movement.tile_pos.distance(*tile_pos);
-        let gain = (1.0 - distance / 10.0).max(0.0);
+    for event in drop_events.read() {
+        let FileDragAndDrop::DroppedFile { path_buf, .. } = event else {
+            continue;
+        };
 
-        let _ = tx.push(AudioCommand::SetTrackGain {
-            track_id: track_icon.track_id,
-            gain,
-        });
+        // Only accept audio files
+        let extension = path_buf
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !matches!(extension.as_str(), "wav" | "mp3" | "ogg" | "flac") {
+            tracing::warn!("Ignoring non-audio file: {}", path_buf.display());
+            continue;
+        }
+
+        // Read file bytes
+        let Ok(audio_bytes) = std::fs::read(path_buf) else {
+            tracing::error!("Failed to read file: {}", path_buf.display());
+            continue;
+        };
+
+        // Add track to kira
+        let track = match manager.add_track(audio_bytes) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::error!("Failed to add track: {e}");
+                continue;
+            }
+        };
+
+        let track_id = counter.0;
+        counter.0 += 1;
+
+        // Grow maze to accommodate new track
+        let Some(_track_pos) = mazegen::grow_maze(&mut maze, &mut state, track_id) else {
+            tracing::error!("Failed to grow maze for new track");
+            continue;
+        };
+
+        // Store the kira handle
+        while handles.handles.len() <= track_id {
+            handles.handles.push(None);
+        }
+        handles.handles[track_id] = Some(track);
+
+        tracing::info!("Added track {track_id} from {}", path_buf.display(),);
+        any_added = true;
+    }
+
+    // Signal a single respawn after all drops are processed
+    if any_added {
+        maze_changed.write(MazeChanged);
     }
 }
 
+/// Compute spatial targets (gain, pan, visibility) from player position and maze LOS
 #[allow(clippy::needless_pass_by_value)]
-fn poll_audio_events(receiver: Option<Res<AudioEventReceiver>>) {
-    let Some(receiver) = receiver else { return };
-    let Ok(mut rx) = receiver.0.lock() else {
+fn compute_spatial_targets(
+    player_query: Query<&Transform, With<Player>>,
+    mut track_query: Query<(&TrackIcon, &TilePos, &mut TrackAudioState)>,
+    maze: Res<crate::maze::Maze>,
+) {
+    let Ok(player_transform) = player_query.single() else {
         return;
     };
 
-    while let Ok(event) = rx.pop() {
-        match &event {
-            AudioEvent::Started => tracing::info!("Audio: playback started"),
-            AudioEvent::Stopped => tracing::info!("Audio: playback stopped"),
-            AudioEvent::EngineInitialized { sample_rate } => {
-                tracing::info!("Audio: engine initialized at {sample_rate}Hz");
-            }
-            AudioEvent::Error(msg) => tracing::error!("Audio error: {msg}"),
+    let player_world = player_transform.translation.truncate();
+    let player_pos = TilePos::from_world(player_world);
+
+    for (_track_icon, tile_pos, mut state) in &mut track_query {
+        let visible = spatial::has_line_of_sight(&maze, player_pos, *tile_pos);
+        state.visible = visible;
+
+        if visible {
+            let distance = player_pos.distance(*tile_pos);
+            state.target_gain = spatial::distance_gain(
+                distance,
+                spatial::DEFAULT_HALF_DISTANCE,
+                spatial::DEFAULT_MAX_DISTANCE,
+            );
+            let track_world = tile_pos.to_world();
+            state.target_pan = spatial::calculate_pan(player_world, track_world);
+        } else {
+            state.target_gain = 0.0;
         }
     }
+}
+
+/// Interpolate current gain/pan toward targets and send to kira
+#[allow(clippy::needless_pass_by_value)]
+fn interpolate_and_send(
+    time: Res<Time>,
+    mut handles: ResMut<TrackHandles>,
+    mut track_query: Query<(&TrackIcon, &mut TrackAudioState)>,
+) {
+    let dt = time.delta_secs();
+
+    for (track_icon, mut state) in &mut track_query {
+        let lerp_factor = (state.fade_speed * dt).min(1.0);
+
+        state.current_gain += (state.target_gain - state.current_gain) * lerp_factor;
+        state.current_pan += (state.target_pan - state.current_pan) * lerp_factor;
+
+        if state.current_gain < 0.001 {
+            state.current_gain = 0.0;
+        }
+
+        if let Some(Some(track)) = handles.handles.get_mut(track_icon.track_id) {
+            track.set_volume(state.current_gain);
+            track.set_panning(state.current_pan);
+        }
+    }
+}
+
+/// Render the audio track panel with `bevy_egui`
+#[allow(clippy::needless_pass_by_value)]
+fn audio_ui_panel(
+    mut contexts: EguiContexts,
+    track_query: Query<(&TrackIcon, &TrackAudioState)>,
+    counter: Res<TrackIdCounter>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+
+    egui::SidePanel::right("audio_panel")
+        .resizable(false)
+        .default_width(180.0)
+        .show(ctx, |ui| {
+            ui.heading("Audio Tracks");
+            ui.separator();
+
+            if counter.0 == 0 {
+                ui.label("Drop a .wav file onto\nthe window to add a track.");
+            } else {
+                for (track_icon, state) in &track_query {
+                    ui.group(|ui| {
+                        ui.label(format!("Track {}", track_icon.track_id));
+                        ui.add(
+                            egui::ProgressBar::new(state.current_gain)
+                                .desired_width(120.0)
+                                .text(format!("{:.0}%", state.current_gain * 100.0)),
+                        );
+                        if state.visible {
+                            ui.colored_label(egui::Color32::from_rgb(80, 200, 80), "visible");
+                        } else {
+                            ui.colored_label(egui::Color32::from_rgb(200, 80, 80), "occluded");
+                        }
+                    });
+                }
+                ui.separator();
+                ui.label("Drop more files to\nadd tracks.");
+            }
+        });
 }

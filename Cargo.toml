@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/vvw-audio",
     "crates/vvw-game",
+    "crates/vvw-light",
     "crates/vvw-app",
 ]
 default-members = ["crates/vvw-app"]
@@ -22,14 +23,14 @@ readme = "README.md"
 # Internal crates
 vvw-audio = { path = "crates/vvw-audio" }
 vvw-game = { path = "crates/vvw-game" }
+vvw-light = { path = "crates/vvw-light" }
 
-# Core dependencies (same versions as vvdaw)
-bevy = "0.17"
-leafwing-input-manager = "0.19"
-cpal = "0.15"
-hound = "3.5"
-dasp = { version = "0.11", features = ["signal", "interpolate", "interpolate-linear"] }
-rtrb = "0.3"
+# Core dependencies
+bevy = "0.18"
+leafwing-input-manager = "0.20"
+avian2d = "0.5"
+kira = { version = "0.11", default-features = false, features = ["cpal", "wav", "mp3", "ogg", "flac"] }
+bevy_egui = "0.39.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
