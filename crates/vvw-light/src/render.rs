@@ -180,7 +180,9 @@ fn update_lightmap(
                 let falloff_factor = (1.0 - dist / radius_tiles).powf(light.falloff);
                 let contribution = light.intensity * falloff_factor;
                 let idx = ty * w + tx;
-                brightness[idx] = (brightness[idx] + contribution).min(1.0);
+                if let Some(cell) = brightness.get_mut(idx) {
+                    *cell = (*cell + contribution).min(1.0);
+                }
             }
         }
     }
@@ -194,13 +196,14 @@ fn update_lightmap(
     };
 
     // Image row 0 = top of texture, but tile row 0 = bottom of world → flip Y
+    debug_assert_eq!(data.len(), w * h * 4, "lightmap data size mismatch");
     for ty in 0..h {
         let img_row = h - 1 - ty;
         for tx in 0..w {
             let idx = ty * w + tx;
             let pixel_idx = (img_row * w + tx) * 4;
             if pixel_idx + 3 < data.len() {
-                let alpha = ((1.0 - brightness[idx]) * 255.0) as u8;
+                let alpha = ((1.0 - brightness[idx].clamp(0.0, 1.0)) * 255.0) as u8;
                 data[pixel_idx] = 0;
                 data[pixel_idx + 1] = 0;
                 data[pixel_idx + 2] = 0;
