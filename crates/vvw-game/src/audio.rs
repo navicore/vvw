@@ -81,6 +81,20 @@ impl Default for ProjectNameInput {
     }
 }
 
+/// Whether the right-side settings panel is expanded or collapsed
+#[derive(Resource)]
+pub struct UiPanelOpen(pub bool);
+
+impl Default for UiPanelOpen {
+    fn default() -> Self {
+        Self(true)
+    }
+}
+
+/// Message requesting a fresh random maze layout using current settings
+#[derive(Message)]
+pub struct MazeRegenRequested;
+
 /// Cached list of saved project names to avoid per-frame filesystem I/O
 #[derive(Resource)]
 struct CachedProjectList {
@@ -106,8 +120,10 @@ impl Plugin for AudioPlugin {
             .init_resource::<TrackAudioFiles>()
             .init_resource::<ProjectNameInput>()
             .init_resource::<CachedProjectList>()
+            .init_resource::<UiPanelOpen>()
             .add_message::<ProjectSaveRequested>()
             .add_message::<ProjectLoadRequested>()
+            .add_message::<MazeRegenRequested>()
             .add_systems(PostStartup, (setup_audio, load_project_audio).chain())
             .add_systems(
                 Update,
@@ -115,6 +131,7 @@ impl Plugin for AudioPlugin {
                     handle_file_drop,
                     handle_project_save,
                     handle_project_load,
+                    handle_maze_regen,
                     (compute_spatial_targets, interpolate_and_send).chain(),
                     apply_lighting_config,
                 ),
@@ -318,15 +335,37 @@ fn audio_ui_panel(
     mut save_events: MessageWriter<ProjectSaveRequested>,
     mut load_events: MessageWriter<ProjectLoadRequested>,
     mut project_list: ResMut<CachedProjectList>,
+    mut panel_open: ResMut<UiPanelOpen>,
+    mut regen_events: MessageWriter<MazeRegenRequested>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
 
+    // When panel is collapsed, show a small "<<" button to reopen it
+    if !panel_open.0 {
+        egui::Area::new(egui::Id::new("panel_toggle"))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-4.0, 4.0))
+            .show(ctx, |ui| {
+                if ui.button("<<").clicked() {
+                    panel_open.0 = true;
+                }
+            });
+        return;
+    }
+
     egui::SidePanel::right("audio_panel")
         .resizable(false)
         .default_width(180.0)
         .show(ctx, |ui| {
+            // Hide button at the top
+            ui.horizontal(|ui| {
+                if ui.button(">>").clicked() {
+                    panel_open.0 = false;
+                }
+            });
+            ui.separator();
+
             // Project section
             ui.collapsing("Project", |ui| {
                 ui.horizontal(|ui| {
@@ -414,6 +453,13 @@ fn audio_ui_panel(
                         .text("max %")
                         .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
                 );
+
+                ui.add_space(8.0);
+                ui.add_enabled_ui(counter.0 > 0, |ui| {
+                    if ui.button("Regenerate Maze").clicked() {
+                        regen_events.write(MazeRegenRequested);
+                    }
+                });
             });
 
             ui.collapsing("Lighting", |ui| {
@@ -440,6 +486,51 @@ fn audio_ui_panel(
                 ui.add(egui::Slider::new(&mut lighting.track_falloff, 0.1..=5.0).text("falloff"));
             });
         });
+}
+
+/// Regenerate the maze layout from scratch using current settings and existing tracks
+#[allow(clippy::needless_pass_by_value)]
+fn handle_maze_regen(
+    mut events: MessageReader<MazeRegenRequested>,
+    mut maze: ResMut<Maze>,
+    mut state: ResMut<MazeGenState>,
+    track_audio: Res<TrackAudioFiles>,
+    mut maze_changed: MessageWriter<MazeChanged>,
+    mut player_query: Query<&mut Transform, With<Player>>,
+) {
+    let mut any = false;
+    for _ in events.read() {
+        any = true;
+    }
+    if !any {
+        return;
+    }
+
+    // Collect and sort track IDs so the maze is built deterministically per set
+    let mut track_ids: Vec<usize> = track_audio.files.keys().copied().collect();
+    track_ids.sort_unstable();
+
+    // Fresh maze with one starting room, using current slider settings
+    let (new_maze, new_state) = mazegen::generate_initial_maze(&state.config);
+    *maze = new_maze;
+    state.rooms = new_state.rooms;
+
+    // Grow a room + corridor for each track
+    for &track_id in &track_ids {
+        mazegen::grow_maze(&mut maze, &mut state, track_id);
+    }
+
+    // Reposition player to the new start
+    if let Some(start) = maze.find_player_start() {
+        let world_pos = start.to_world();
+        for mut transform in &mut player_query {
+            transform.translation.x = world_pos.x;
+            transform.translation.y = world_pos.y;
+        }
+    }
+
+    maze_changed.write(MazeChanged);
+    tracing::info!("Maze regenerated with {} tracks", track_ids.len());
 }
 
 /// Push `LightingConfig` values to actual light components when config changes.
