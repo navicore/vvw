@@ -5,10 +5,11 @@ use std::collections::HashMap;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-use vvw_light::{LightOccluder2d, PointLight2d};
+use vvw_light::{LightOccluder2d, LightOccluderGrid, PointLight2d};
 
-use crate::audio::TrackAudioState;
-use crate::mazegen::{MazeGenConfig, generate_initial_maze};
+use crate::audio::{TrackAudioFile, TrackAudioFiles, TrackAudioState, TrackIdCounter};
+use crate::mazegen::{MazeGenConfig, MazeGenState, generate_initial_maze};
+use crate::project::{self, StartupProject};
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
 /// Maze resource containing the grid layout
@@ -203,6 +204,10 @@ pub struct TrackIcon {
     pub track_id: usize,
 }
 
+/// Marker for track icon point lights
+#[derive(Component)]
+pub struct TrackLight;
+
 /// Message fired when the maze changes and needs re-rendering
 #[derive(Message)]
 pub struct MazeChanged;
@@ -213,8 +218,8 @@ pub struct MazePlugin;
 impl Plugin for MazePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<MazeChanged>()
-            .add_systems(Startup, setup_maze)
-            .add_systems(Update, respawn_maze_tiles);
+            .add_systems(Startup, (setup_maze, sync_occluder_grid).chain())
+            .add_systems(Update, (respawn_maze_tiles, sync_occluder_grid).chain());
     }
 }
 
@@ -228,7 +233,56 @@ pub mod colors {
     pub const TRACK_ICON: Color = Color::srgb(0.8, 0.4, 0.2);
 }
 
-fn setup_maze(mut commands: Commands) {
+#[allow(clippy::needless_pass_by_value)]
+fn setup_maze(mut commands: Commands, startup_project: Option<Res<StartupProject>>) {
+    if let Some(name) = startup_project.as_ref().and_then(|p| p.0.as_deref()) {
+        let path = project::project_dir(name);
+        match project::load_project(&path) {
+            Ok((manifest, audio_bytes)) => {
+                tracing::info!("Loading project '{}' from {}", name, path.display());
+                spawn_maze_tiles(&mut commands, &manifest.maze);
+
+                // Set track counter to max id + 1
+                let next_id = manifest
+                    .tracks
+                    .iter()
+                    .map(|t| t.track_id.saturating_add(1))
+                    .max()
+                    .unwrap_or(0);
+                commands.insert_resource(TrackIdCounter(next_id));
+
+                // Store audio bytes for later replay (in load_project_audio)
+                let mut track_files = TrackAudioFiles::default();
+                for entry in &manifest.tracks {
+                    if let Some(bytes) = audio_bytes.get(&entry.track_id) {
+                        track_files.files.insert(
+                            entry.track_id,
+                            TrackAudioFile {
+                                original_filename: entry.original_filename.clone(),
+                                bytes: bytes.clone(),
+                            },
+                        );
+                    }
+                }
+                commands.insert_resource(track_files);
+
+                let state = MazeGenState {
+                    rooms: manifest.rooms,
+                    config: manifest.maze_config,
+                };
+                commands.insert_resource(manifest.lighting);
+                commands.insert_resource(manifest.maze);
+                commands.insert_resource(state);
+                return;
+            }
+            Err(e) => {
+                tracing::error!("Failed to load project from {}: {e}", path.display());
+                tracing::info!("Falling back to fresh maze");
+            }
+        }
+    }
+
+    // Default: generate fresh maze
     let config = MazeGenConfig::default();
     let (maze, state) = generate_initial_maze(&config);
     spawn_maze_tiles(&mut commands, &maze);
@@ -264,6 +318,8 @@ pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
                 entity.insert((
                     RigidBody::Static,
                     Collider::rectangle(TILE_SIZE, TILE_SIZE),
+                    Friction::new(0.5),
+                    Restitution::new(0.4),
                     LightOccluder2d {
                         half_size: Vec2::splat(TILE_SIZE / 2.0),
                     },
@@ -284,13 +340,29 @@ pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
                         pos,
                         TrackAudioState::default(),
                     ))
-                    .with_child(PointLight2d {
-                        color: Color::srgb(0.8, 0.4, 0.2), // Orange glow
-                        intensity: 0.4,
-                        radius: 100.0,
-                        falloff: 0.6,
-                    });
+                    .with_child((
+                        PointLight2d {
+                            color: Color::srgb(0.8, 0.4, 0.2), // Orange glow
+                            intensity: 0.4,
+                            radius: 100.0,
+                            falloff: 0.6,
+                        },
+                        TrackLight,
+                    ));
             }
+        }
+    }
+}
+
+/// Populate the light occluder grid from maze wall data.
+#[allow(clippy::needless_pass_by_value)]
+fn sync_occluder_grid(maze: Res<Maze>, mut grid: ResMut<LightOccluderGrid>) {
+    if grid.width != maze.width || grid.height != maze.height {
+        *grid = LightOccluderGrid::new(maze.width, maze.height, TILE_SIZE);
+    }
+    for y in 0..maze.height {
+        for x in 0..maze.width {
+            grid.set(x, y, maze.is_wall(x as i32, y as i32));
         }
     }
 }
@@ -313,7 +385,7 @@ fn respawn_maze_tiles(
         return;
     }
 
-    // Despawn old tiles
+    // Despawn old tiles (Bevy 0.18 despawn() handles children automatically)
     for entity in &tile_query {
         commands.entity(entity).despawn();
     }

@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 use clap::Parser;
-use vvw_game::VvwGamePlugin;
+use vvw_game::{StartupProject, VvwGamePlugin};
 
 /// VVW - Visual Virtual World audio exploration game
 #[derive(Parser, Debug)]
@@ -14,6 +14,10 @@ struct Args {
     /// Enable debug logging
     #[arg(short, long)]
     debug: bool,
+
+    /// Name of a saved project to load on startup
+    #[arg(short, long)]
+    project: Option<String>,
 }
 
 fn main() {
@@ -31,6 +35,7 @@ fn main() {
     tracing::info!("Starting VVW - Visual Virtual World");
 
     App::new()
+        .insert_resource(StartupProject(args.project))
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {

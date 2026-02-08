@@ -8,6 +8,7 @@ description = "VVW 2D lighting - SDF raymarching compute shader for point lights
 
 [dependencies]
 bevy.workspace = true
+serde.workspace = true
 
 [lints]
 workspace = true

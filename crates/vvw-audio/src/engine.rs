@@ -77,6 +77,16 @@ impl GameTrack {
         self.handle.set_panning(pan, Tween::default());
     }
 
+    /// Pause playback — frees audio thread resources while preserving state.
+    pub fn pause(&mut self) {
+        self.handle.pause(Tween::default());
+    }
+
+    /// Resume playback after a pause.
+    pub fn resume(&mut self) {
+        self.handle.resume(Tween::default());
+    }
+
     /// Stop playback of this track.
     pub fn stop(&mut self) {
         self.handle.stop(Tween::default());

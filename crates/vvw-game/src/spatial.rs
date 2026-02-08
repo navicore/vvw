@@ -7,6 +7,10 @@ use crate::tiles::TilePos;
 /// Uses Bresenham's line algorithm on the tile grid.
 /// Start and end tiles are not considered blockers.
 pub fn has_line_of_sight(maze: &Maze, from: TilePos, to: TilePos) -> bool {
+    if from == to {
+        return true;
+    }
+
     let mut x0 = from.x;
     let mut y0 = from.y;
     let x1 = to.x;

@@ -2,12 +2,13 @@
 
 use bevy::prelude::*;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 use crate::maze::Maze;
 use crate::tiles::{TileKind, TilePos};
 
 /// Configuration for maze generation
-#[derive(Resource, Debug, Clone)]
+#[derive(Resource, Debug, Clone, Serialize, Deserialize)]
 pub struct MazeGenConfig {
     pub min_room_size: usize,
     pub max_room_size: usize,
@@ -36,7 +37,7 @@ impl Default for MazeGenConfig {
 }
 
 /// A rectangular room in the maze
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Room {
     pub x: usize,
     pub y: usize,
