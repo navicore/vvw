@@ -8,12 +8,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
-use vvw_light::LightingConfig;
+
+pub use vvw_core::project::{ProjectManifest, TrackEntry};
 
 use crate::audio::TrackAudioFile;
 use crate::maze::Maze;
-use crate::mazegen::{MazeGenConfig, MazeGenState, Room};
+use crate::mazegen::MazeGenState;
+use vvw_core::lighting::LightingConfig;
 
 /// Resource holding the project name from the CLI `--project` arg.
 /// When set, the named project is loaded on startup.
@@ -97,23 +98,6 @@ pub fn list_projects() -> Vec<String> {
     names
 }
 
-/// Metadata for a single audio track in the project
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrackEntry {
-    pub track_id: usize,
-    pub original_filename: String,
-}
-
-/// Serialized project manifest
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProjectManifest {
-    pub maze: Maze,
-    pub rooms: Vec<Room>,
-    pub maze_config: MazeGenConfig,
-    pub lighting: LightingConfig,
-    pub tracks: Vec<TrackEntry>,
-}
-
 /// Errors that can occur during project save/load
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
@@ -192,7 +176,7 @@ pub fn load_project(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mazegen::generate_initial_maze;
+    use crate::mazegen::{MazeGenConfig, generate_initial_maze};
 
     #[test]
     fn round_trip_empty_project() {
