@@ -93,29 +93,26 @@ impl GameTrack {
     }
 }
 
+/// Delegates to the inherent methods above. Rust's method resolution
+/// guarantees `self.method()` calls the inherent impl, not the trait method.
 impl vvw_core::audio::TrackHandle for GameTrack {
     fn set_volume(&mut self, amplitude: f32) {
-        let db = if amplitude <= 0.001 {
-            Decibels(-60.0)
-        } else {
-            Decibels(20.0 * amplitude.log10())
-        };
-        self.handle.set_volume(db, Tween::default());
+        self.set_volume(amplitude);
     }
 
     fn set_panning(&mut self, pan: f32) {
-        self.handle.set_panning(pan, Tween::default());
+        self.set_panning(pan);
     }
 
     fn pause(&mut self) {
-        self.handle.pause(Tween::default());
+        self.pause();
     }
 
     fn resume(&mut self) {
-        self.handle.resume(Tween::default());
+        self.resume();
     }
 
     fn stop(&mut self) {
-        self.handle.stop(Tween::default());
+        self.stop();
     }
 }
