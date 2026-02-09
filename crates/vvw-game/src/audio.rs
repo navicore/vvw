@@ -700,19 +700,16 @@ fn handle_project_load(
 
     for entry in &manifest.tracks {
         if let Some(bytes) = audio_bytes.remove(&entry.track_id) {
-            // Clone for kira; move the original into storage (avoids double clone)
-            let kira_bytes = bytes.clone();
-            track_audio.files.insert(
-                entry.track_id,
-                TrackAudioFile {
-                    original_filename: entry.original_filename.clone(),
-                    bytes,
-                    metadata: entry.metadata.clone(),
-                },
-            );
-
-            match manager.add_track(kira_bytes) {
+            match manager.add_track(bytes.clone()) {
                 Ok(track) => {
+                    track_audio.files.insert(
+                        entry.track_id,
+                        TrackAudioFile {
+                            original_filename: entry.original_filename.clone(),
+                            bytes,
+                            metadata: entry.metadata.clone(),
+                        },
+                    );
                     handles.handles.insert(entry.track_id, Box::new(track));
                     tracing::info!(
                         "Loaded track {} ({})",
