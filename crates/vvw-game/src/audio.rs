@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::window::FileDragAndDrop;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
-use vvw_audio::{GameAudioManager, GameTrack};
+use vvw_audio::GameAudioManager;
+use vvw_core::audio::TrackHandle;
+use vvw_core::project::{AlbumMetadata, TrackMetadata};
 use vvw_light::{AmbientLight2d, LightingConfig, PointLight2d};
 
 use crate::maze::{Maze, MazeChanged, TrackIcon, TrackLight};
@@ -15,10 +17,11 @@ use crate::project;
 use crate::spatial;
 use crate::tiles::TilePos;
 
-/// Holds all active kira track handles, indexed by `track_id`
+/// Holds all active track handles, indexed by `track_id`.
+/// Uses `Box<dyn TrackHandle>` so the game layer is audio-backend agnostic.
 #[derive(Resource, Default)]
 pub struct TrackHandles {
-    handles: HashMap<usize, GameTrack>,
+    handles: HashMap<usize, Box<dyn TrackHandle>>,
 }
 
 /// Counter for track IDs
@@ -54,7 +57,12 @@ impl Default for TrackAudioState {
 pub struct TrackAudioFile {
     pub original_filename: String,
     pub bytes: Vec<u8>,
+    pub metadata: TrackMetadata,
 }
+
+/// Album-level metadata, stored as a Bevy resource
+#[derive(Resource, Default)]
+pub struct AlbumMetadataResource(pub AlbumMetadata);
 
 /// Stores the raw audio bytes for each track, indexed by `track_id`.
 /// Used to save projects back to disk.
@@ -118,6 +126,7 @@ impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LightingConfig>()
             .init_resource::<TrackAudioFiles>()
+            .init_resource::<AlbumMetadataResource>()
             .init_resource::<ProjectNameInput>()
             .init_resource::<CachedProjectList>()
             .init_resource::<UiPanelOpen>()
@@ -223,6 +232,7 @@ fn handle_file_drop(
             TrackAudioFile {
                 original_filename,
                 bytes: audio_bytes,
+                metadata: TrackMetadata::default(),
             },
         );
 
@@ -232,8 +242,8 @@ fn handle_file_drop(
             continue;
         };
 
-        // Store the kira handle
-        handles.handles.insert(track_id, track);
+        // Store the kira handle (boxed as dyn TrackHandle)
+        handles.handles.insert(track_id, Box::new(track));
 
         tracing::info!("Added track {track_id} from {}", path_buf.display(),);
         any_added = true;
@@ -337,6 +347,8 @@ fn audio_ui_panel(
     mut project_list: ResMut<CachedProjectList>,
     mut panel_open: ResMut<UiPanelOpen>,
     mut regen_events: MessageWriter<MazeRegenRequested>,
+    mut album_meta: ResMut<AlbumMetadataResource>,
+    mut track_audio: ResMut<TrackAudioFiles>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -394,6 +406,19 @@ fn audio_ui_panel(
                 }
             });
 
+            ui.collapsing("Album Info", |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Title:");
+                    ui.text_edit_singleline(&mut album_meta.0.title);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Artist:");
+                    ui.text_edit_singleline(&mut album_meta.0.artist);
+                });
+                ui.label("Description:");
+                ui.text_edit_multiline(&mut album_meta.0.description);
+            });
+
             ui.heading("Audio Tracks");
             ui.separator();
 
@@ -420,6 +445,17 @@ fn audio_ui_panel(
                             ui.colored_label(egui::Color32::from_rgb(80, 200, 80), "visible");
                         } else {
                             ui.colored_label(egui::Color32::from_rgb(200, 80, 80), "occluded");
+                        }
+
+                        if let Some(file) = track_audio.files.get_mut(&track_icon.track_id) {
+                            ui.horizontal(|ui| {
+                                ui.label("Title:");
+                                ui.text_edit_singleline(&mut file.metadata.title);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Artist:");
+                                ui.text_edit_singleline(&mut file.metadata.artist);
+                            });
                         }
                     });
                 }
@@ -567,6 +603,7 @@ fn handle_project_save(
     state: Res<MazeGenState>,
     lighting: Res<LightingConfig>,
     track_audio: Res<TrackAudioFiles>,
+    album_meta: Res<AlbumMetadataResource>,
     mut project_list: ResMut<CachedProjectList>,
 ) {
     let mut name = None;
@@ -578,7 +615,14 @@ fn handle_project_save(
     };
 
     let save_path = project::project_dir(&project_name);
-    match project::save_project(&save_path, &maze, &state, &lighting, &track_audio.files) {
+    match project::save_project(
+        &save_path,
+        &maze,
+        &state,
+        &lighting,
+        &track_audio.files,
+        &album_meta.0,
+    ) {
         Ok(()) => {
             tracing::info!("Project '{project_name}' saved to {}", save_path.display());
             project_list.dirty = true;
@@ -598,6 +642,7 @@ fn handle_project_load(
     mut state: ResMut<MazeGenState>,
     mut lighting: ResMut<LightingConfig>,
     mut track_audio: ResMut<TrackAudioFiles>,
+    mut album_meta: ResMut<AlbumMetadataResource>,
     mut maze_changed: MessageWriter<MazeChanged>,
     mut player_query: Query<&mut Transform, With<Player>>,
     mut project_name: ResMut<ProjectNameInput>,
@@ -636,6 +681,7 @@ fn handle_project_load(
         config: manifest.maze_config,
     };
     *lighting = manifest.lighting;
+    *album_meta = AlbumMetadataResource(manifest.album.clone());
 
     // Set counter to max track_id + 1
     counter.0 = manifest
@@ -654,19 +700,17 @@ fn handle_project_load(
 
     for entry in &manifest.tracks {
         if let Some(bytes) = audio_bytes.remove(&entry.track_id) {
-            // Clone for kira; move the original into storage (avoids double clone)
-            let kira_bytes = bytes.clone();
-            track_audio.files.insert(
-                entry.track_id,
-                TrackAudioFile {
-                    original_filename: entry.original_filename.clone(),
-                    bytes,
-                },
-            );
-
-            match manager.add_track(kira_bytes) {
+            match manager.add_track(bytes.clone()) {
                 Ok(track) => {
-                    handles.handles.insert(entry.track_id, track);
+                    track_audio.files.insert(
+                        entry.track_id,
+                        TrackAudioFile {
+                            original_filename: entry.original_filename.clone(),
+                            bytes,
+                            metadata: entry.metadata.clone(),
+                        },
+                    );
+                    handles.handles.insert(entry.track_id, Box::new(track));
                     tracing::info!(
                         "Loaded track {} ({})",
                         entry.track_id,
@@ -723,7 +767,7 @@ fn load_project_audio(
     for (track_id, audio_file) in entries {
         match manager.add_track(audio_file.bytes.clone()) {
             Ok(track) => {
-                handles.handles.insert(*track_id, track);
+                handles.handles.insert(*track_id, Box::new(track));
                 tracing::info!(
                     "Replayed track {} ({}) from loaded project",
                     track_id,

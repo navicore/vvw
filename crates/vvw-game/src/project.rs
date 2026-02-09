@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
+use vvw_core::project::AlbumMetadata;
 pub use vvw_core::project::{ProjectManifest, TrackEntry};
 
 use crate::audio::TrackAudioFile;
@@ -117,6 +118,7 @@ pub fn save_project(
     gen_state: &MazeGenState,
     lighting: &LightingConfig,
     track_audio: &HashMap<usize, TrackAudioFile>,
+    album: &AlbumMetadata,
 ) -> Result<(), ProjectError> {
     // Create directories
     let audio_dir = path.join("audio");
@@ -134,6 +136,7 @@ pub fn save_project(
         .map(|(track_id, audio_file)| TrackEntry {
             track_id: *track_id,
             original_filename: audio_file.original_filename.clone(),
+            metadata: audio_file.metadata.clone(),
         })
         .collect();
 
@@ -144,6 +147,7 @@ pub fn save_project(
         maze_config: gen_state.config.clone(),
         lighting: lighting.clone(),
         tracks,
+        album: album.clone(),
     };
 
     // Serialize and write
@@ -188,7 +192,8 @@ mod tests {
         let dir = std::env::temp_dir().join("vvw_test_empty_project");
         let _ = std::fs::remove_dir_all(&dir);
 
-        save_project(&dir, &maze, &state, &lighting, &track_audio).unwrap();
+        let album = AlbumMetadata::default();
+        save_project(&dir, &maze, &state, &lighting, &track_audio, &album).unwrap();
         let (loaded_manifest, loaded_audio) = load_project(&dir).unwrap();
 
         assert_eq!(loaded_manifest.maze.width, maze.width);
@@ -212,6 +217,7 @@ mod tests {
             TrackAudioFile {
                 original_filename: "song.mp3".to_string(),
                 bytes: vec![0xFF, 0xFB, 0x90, 0x00], // fake mp3 header
+                metadata: vvw_core::project::TrackMetadata::default(),
             },
         );
         track_audio.insert(
@@ -219,13 +225,15 @@ mod tests {
             TrackAudioFile {
                 original_filename: "beat.wav".to_string(),
                 bytes: vec![0x52, 0x49, 0x46, 0x46], // "RIFF"
+                metadata: vvw_core::project::TrackMetadata::default(),
             },
         );
 
         let dir = std::env::temp_dir().join("vvw_test_tracks_project");
         let _ = std::fs::remove_dir_all(&dir);
 
-        save_project(&dir, &maze, &state, &lighting, &track_audio).unwrap();
+        let album = AlbumMetadata::default();
+        save_project(&dir, &maze, &state, &lighting, &track_audio, &album).unwrap();
         let (loaded_manifest, loaded_audio) = load_project(&dir).unwrap();
 
         assert_eq!(loaded_manifest.tracks.len(), 2);

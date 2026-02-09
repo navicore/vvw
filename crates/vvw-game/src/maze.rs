@@ -6,7 +6,9 @@ use vvw_light::{LightOccluder2d, LightOccluderGrid, PointLight2d};
 
 pub use vvw_core::maze::Maze;
 
-use crate::audio::{TrackAudioFile, TrackAudioFiles, TrackAudioState, TrackIdCounter};
+use crate::audio::{
+    AlbumMetadataResource, TrackAudioFile, TrackAudioFiles, TrackAudioState, TrackIdCounter,
+};
 use crate::mazegen::{MazeGenConfig, MazeGenState, generate_initial_maze};
 use crate::project::{self, StartupProject};
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
@@ -77,6 +79,7 @@ fn setup_maze(mut commands: Commands, startup_project: Option<Res<StartupProject
                             TrackAudioFile {
                                 original_filename: entry.original_filename.clone(),
                                 bytes: bytes.clone(),
+                                metadata: entry.metadata.clone(),
                             },
                         );
                     }
@@ -88,6 +91,7 @@ fn setup_maze(mut commands: Commands, startup_project: Option<Res<StartupProject
                     config: manifest.maze_config,
                 };
                 commands.insert_resource(manifest.lighting);
+                commands.insert_resource(AlbumMetadataResource(manifest.album));
                 commands.insert_resource(manifest.maze);
                 commands.insert_resource(state);
                 return;

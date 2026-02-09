@@ -11,5 +11,8 @@ bevy.workspace = true
 serde.workspace = true
 rand.workspace = true
 
+[dev-dependencies]
+ron.workspace = true
+
 [lints]
 workspace = true
