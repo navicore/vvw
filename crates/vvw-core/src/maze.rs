@@ -2,13 +2,13 @@
 
 use std::collections::HashMap;
 
-use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::tiles::{TileKind, TilePos};
 
 /// Maze resource containing the grid layout
-#[derive(Resource, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "bevy-ecs", derive(bevy::prelude::Resource))]
 pub struct Maze {
     /// Width of the maze in tiles
     pub width: usize,

@@ -1,0 +1,52 @@
+[package]
+name = "vvw-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VVW WASM web player - browser-based maze exploration with spatial audio"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+vvw-core = { path = "../vvw-core", default-features = false }
+glam = "0.30"
+ron.workspace = true
+serde.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+console_error_panic_hook.workspace = true
+getrandom.workspace = true
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "AudioContext",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "GainNode",
+    "StereoPannerNode",
+    "AudioDestinationNode",
+    "AudioParam",
+    "CanvasRenderingContext2d",
+    "HtmlCanvasElement",
+    "Document",
+    "Element",
+    "Window",
+    "HtmlElement",
+    "KeyboardEvent",
+    "EventTarget",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Headers",
+    "CssStyleDeclaration",
+    "Location",
+    "console",
+]
+
+[lints]
+workspace = true

@@ -17,3 +17,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Deploy output
+/deploy/
+crates/vvw-web/dist/

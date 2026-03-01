@@ -1,0 +1,22 @@
+[package]
+name = "vvw-deploy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VVW deploy CLI - assemble and deploy WASM player to Cloudflare Pages"
+
+[[bin]]
+name = "vvw-deploy"
+path = "src/main.rs"
+
+[dependencies]
+vvw-core = { path = "../vvw-core", default-features = false }
+clap.workspace = true
+anyhow.workspace = true
+ron.workspace = true
+serde.workspace = true
+dirs.workspace = true
+
+[lints]
+workspace = true

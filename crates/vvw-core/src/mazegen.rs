@@ -1,6 +1,5 @@
 //! Procedural maze generation: rooms connected by corridors
 
-use bevy::prelude::*;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +7,8 @@ use crate::maze::Maze;
 use crate::tiles::{TileKind, TilePos};
 
 /// Configuration for maze generation
-#[derive(Resource, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "bevy-ecs", derive(bevy::prelude::Resource))]
 pub struct MazeGenConfig {
     pub min_room_size: usize,
     pub max_room_size: usize,
@@ -55,7 +55,7 @@ impl Room {
 }
 
 /// Persistent state for incremental maze generation
-#[derive(Resource)]
+#[cfg_attr(feature = "bevy-ecs", derive(bevy::prelude::Resource))]
 pub struct MazeGenState {
     pub rooms: Vec<Room>,
     pub config: MazeGenConfig,
