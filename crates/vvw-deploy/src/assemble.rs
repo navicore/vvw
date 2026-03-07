@@ -80,7 +80,8 @@ fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
 
         if file_type.is_symlink() {
             continue;
-        } else if file_type.is_dir() {
+        }
+        if file_type.is_dir() {
             std::fs::create_dir_all(&dest_path)?;
             copy_dir_contents(&entry.path(), &dest_path)?;
         } else {

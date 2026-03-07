@@ -92,7 +92,8 @@ fn walkdir(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
         let file_type = entry.file_type()?;
         if file_type.is_symlink() {
             continue;
-        } else if file_type.is_dir() {
+        }
+        if file_type.is_dir() {
             files.extend(walkdir(&entry.path())?);
         } else {
             files.push(entry.path());
