@@ -114,19 +114,27 @@ fn list_projects() -> Vec<String> {
 /// Validate that an album name resolves inside the output directory.
 /// Prevents path traversal via names like `../../etc`.
 pub fn safe_album_path(output: &Path, album: &str) -> Result<PathBuf> {
-    // Reject names containing path separators or parent references
-    if album.contains('/') || album.contains('\\') || album.contains("..") {
-        anyhow::bail!("Invalid album name: '{album}' (must not contain path separators or '..')");
+    // Reject empty, dot-only, path separators, or parent references
+    let trimmed = album.trim();
+    if trimmed.is_empty()
+        || trimmed == "."
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+    {
+        anyhow::bail!(
+            "Invalid album name: '{album}' (must be a plain directory name without path separators, '.', or '..')"
+        );
     }
 
-    let joined = output.join(album);
+    let joined = output.join(trimmed);
 
     // Double-check via canonicalization when the output dir already exists
     if output.exists() {
         let canonical_output = output.canonicalize()?;
         let canonical_album = joined.canonicalize().unwrap_or_else(|_| {
             // If the album dir doesn't exist yet, canonicalize the parent
-            canonical_output.join(album)
+            canonical_output.join(trimmed)
         });
         anyhow::ensure!(
             canonical_album.starts_with(&canonical_output),

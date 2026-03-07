@@ -89,11 +89,13 @@ fn walkdir(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     }
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            files.extend(walkdir(&path)?);
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        } else if file_type.is_dir() {
+            files.extend(walkdir(&entry.path())?);
         } else {
-            files.push(path);
+            files.push(entry.path());
         }
     }
     Ok(files)
