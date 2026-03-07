@@ -46,12 +46,14 @@ pub fn update_spatial(
     for track in tracks.iter_mut() {
         let visible = spatial::has_line_of_sight(maze, player_pos, track.tile_pos);
 
+        // Always update pan so direction is current when LOS resumes
+        let track_world = track.tile_pos.to_world();
+        track.target_pan = spatial::calculate_pan(player_world, track_world);
+
         if visible {
             let distance = player_pos.distance(track.tile_pos);
             track.target_gain =
                 spatial::distance_gain(distance, DEFAULT_HALF_DISTANCE, DEFAULT_MAX_DISTANCE);
-            let track_world = track.tile_pos.to_world();
-            track.target_pan = spatial::calculate_pan(player_world, track_world);
         } else {
             track.target_gain = 0.0;
         }

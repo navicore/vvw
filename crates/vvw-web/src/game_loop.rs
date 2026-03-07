@@ -24,6 +24,7 @@ pub struct Game {
     pub player: Player,
     pub engine: WebAudioEngine,
     pub tracks: Vec<TrackSpatialState>,
+    pub track_positions: std::collections::HashSet<(i32, i32)>,
     pub canvas: HtmlCanvasElement,
     pub ctx: web_sys::CanvasRenderingContext2d,
     pub input: Rc<RefCell<InputState>>,
@@ -87,6 +88,12 @@ impl Game {
             }
         }
 
+        // Pre-build track position set for rendering (avoids per-frame allocation)
+        let track_positions: std::collections::HashSet<(i32, i32)> = tracks
+            .iter()
+            .map(|t| (t.tile_pos.x, t.tile_pos.y))
+            .collect();
+
         // Set up canvas
         let (canvas, ctx) = renderer::setup_canvas()?;
 
@@ -98,6 +105,7 @@ impl Game {
             player,
             engine,
             tracks,
+            track_positions,
             canvas,
             ctx,
             input,
@@ -116,7 +124,13 @@ pub fn start(game: Game) -> Result<(), JsValue> {
     {
         let g = game.borrow();
         renderer::render(
-            &g.ctx, &g.canvas, &g.maze, g.player.x, g.player.y, &g.tracks,
+            &g.ctx,
+            &g.canvas,
+            &g.maze,
+            g.player.x,
+            g.player.y,
+            &g.tracks,
+            &g.track_positions,
         );
     }
 
@@ -207,6 +221,7 @@ fn start_animation_loop(game: Rc<RefCell<Game>>) {
                 ref mut player,
                 ref engine,
                 ref mut tracks,
+                ref track_positions,
                 ref ctx,
                 ref canvas,
                 ..
@@ -219,7 +234,15 @@ fn start_animation_loop(game: Rc<RefCell<Game>>) {
             crate::spatial::update_spatial(player.x, player.y, maze, tracks, engine, dt);
 
             // Render
-            renderer::render(ctx, canvas, maze, player.x, player.y, tracks);
+            renderer::render(
+                ctx,
+                canvas,
+                maze,
+                player.x,
+                player.y,
+                tracks,
+                track_positions,
+            );
         }
 
         // Schedule next frame

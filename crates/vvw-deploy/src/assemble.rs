@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::{project_dir, trunk_build};
+use crate::{project_dir, safe_album_path, trunk_build};
 
 /// Assemble the deploy directory with the WASM player and album data.
 pub fn assemble(workspace_root: &Path, albums: &[String], output: &Path) -> Result<()> {
@@ -45,7 +45,7 @@ pub fn assemble(workspace_root: &Path, albums: &[String], output: &Path) -> Resu
             src.display()
         );
 
-        let album_out = output.join(album);
+        let album_out = safe_album_path(output, album)?;
         std::fs::create_dir_all(&album_out)?;
 
         // Copy project.ron

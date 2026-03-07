@@ -50,6 +50,7 @@ pub fn render(
     player_x: f32,
     player_y: f32,
     tracks: &[TrackSpatialState],
+    track_positions: &std::collections::HashSet<(i32, i32)>,
 ) {
     let cw = f64::from(canvas.width());
     let ch = f64::from(canvas.height());
@@ -69,12 +70,6 @@ pub fn render(
     let min_ty = ((cam_y / ts).floor() as i32).max(0);
     let max_tx = (((cam_x + cw) / ts).ceil() as i32).min(maze.width as i32);
     let max_ty = (((cam_y + ch) / ts).ceil() as i32).min(maze.height as i32);
-
-    // Build a set of track tile positions for fast lookup
-    let track_positions: std::collections::HashSet<(i32, i32)> = tracks
-        .iter()
-        .map(|t| (t.tile_pos.x, t.tile_pos.y))
-        .collect();
 
     // Draw tiles
     for ty in min_ty..max_ty {

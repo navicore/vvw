@@ -3,7 +3,7 @@
 mod assemble;
 mod trunk_build;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -111,6 +111,33 @@ fn list_projects() -> Vec<String> {
     names
 }
 
+/// Validate that an album name resolves inside the output directory.
+/// Prevents path traversal via names like `../../etc`.
+pub fn safe_album_path(output: &Path, album: &str) -> Result<PathBuf> {
+    // Reject names containing path separators or parent references
+    if album.contains('/') || album.contains('\\') || album.contains("..") {
+        anyhow::bail!("Invalid album name: '{album}' (must not contain path separators or '..')");
+    }
+
+    let joined = output.join(album);
+
+    // Double-check via canonicalization when the output dir already exists
+    if output.exists() {
+        let canonical_output = output.canonicalize()?;
+        let canonical_album = joined.canonicalize().unwrap_or_else(|_| {
+            // If the album dir doesn't exist yet, canonicalize the parent
+            canonical_output.join(album)
+        });
+        anyhow::ensure!(
+            canonical_album.starts_with(&canonical_output),
+            "Album path '{}' resolves outside the output directory",
+            canonical_album.display()
+        );
+    }
+
+    Ok(joined)
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -191,7 +218,7 @@ fn main() -> Result<()> {
         }
 
         Commands::Clean { album, output } => {
-            let album_dir = output.join(&album);
+            let album_dir = safe_album_path(&output, &album)?;
             if album_dir.exists() {
                 std::fs::remove_dir_all(&album_dir)?;
                 println!("Removed {}", album_dir.display());

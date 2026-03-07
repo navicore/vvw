@@ -40,7 +40,7 @@ fn dist_is_fresh(workspace_root: &Path) -> bool {
         return false;
     };
 
-    // Check if any .rs file in vvw-web/src or vvw-core/src is newer than dist
+    // Check if any source file in vvw-web/src or vvw-core/src is newer than dist
     let source_dirs = [
         workspace_root.join("crates/vvw-web/src"),
         workspace_root.join("crates/vvw-core/src"),
@@ -56,6 +56,25 @@ fn dist_is_fresh(workspace_root: &Path) -> bool {
                     return false;
                 }
             }
+        }
+    }
+
+    // Also check config files that affect the build
+    let config_files = [
+        workspace_root.join("crates/vvw-web/Cargo.toml"),
+        workspace_root.join("crates/vvw-web/Trunk.toml"),
+        workspace_root.join("crates/vvw-web/index.html"),
+        workspace_root.join("crates/vvw-core/Cargo.toml"),
+        workspace_root.join("Cargo.toml"),
+        workspace_root.join("Cargo.lock"),
+    ];
+
+    for path in &config_files {
+        if let Ok(meta) = std::fs::metadata(path)
+            && let Ok(mtime) = meta.modified()
+            && mtime > dist_mtime
+        {
+            return false;
         }
     }
 
