@@ -31,6 +31,7 @@ vvw-light = { path = "crates/vvw-light" }
 
 # Core dependencies
 bevy = "0.18"
+# Must match the glam version re-exported by bevy; verify with `cargo tree -p glam`
 glam = "0.30"
 leafwing-input-manager = "0.20"
 avian2d = "0.5"
