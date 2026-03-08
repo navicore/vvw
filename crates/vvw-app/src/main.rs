@@ -46,8 +46,8 @@ fn main() {
                     }),
                     ..default()
                 })
-                .disable::<bevy::log::LogPlugin>() // We initialize tracing manually
-                .disable::<bevy::audio::AudioPlugin>(), // We use kira directly
+                .disable::<bevy::log::LogPlugin>(), // We initialize tracing manually
+                                                    // bevy_audio is excluded at the feature level (Cargo.toml) — no AudioPlugin to disable
         )
         .add_plugins(VvwGamePlugin)
         .run();

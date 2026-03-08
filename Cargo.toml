@@ -30,7 +30,20 @@ vvw-game = { path = "crates/vvw-game" }
 vvw-light = { path = "crates/vvw-light" }
 
 # Core dependencies
-bevy = "0.18"
+# default-features=false excludes bevy_audio (rodio/cpal 0.15) — we use kira directly.
+# Features expand bevy's "2d" and "ui" presets but omit "audio" everywhere.
+# bevy's "2d" = default_app + default_platform + 2d_bevy_render + ui + scene + audio + picking
+# bevy's "ui" = default_app + default_platform + ui_api + ui_bevy_render + scene + audio + picking
+# We replace "2d" and "ui" with their sub-features, dropping "audio".
+bevy = { version = "0.18", default-features = false, features = [
+    "default_app",
+    "default_platform",
+    "2d_bevy_render",
+    "ui_api",
+    "ui_bevy_render",
+    "scene",
+    "picking",
+] }
 # Must match the glam version re-exported by bevy; verify with `cargo tree -p glam`
 glam = "0.30"
 leafwing-input-manager = "0.20"
