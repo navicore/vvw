@@ -229,9 +229,7 @@ fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
 }
 
 fn cmd_wrangler(args: &[&str], label: &str) -> Result<()> {
-    let status = std::process::Command::new("wrangler")
-        .args(args)
-        .status()?;
+    let status = std::process::Command::new("wrangler").args(args).status()?;
     if !status.success() {
         anyhow::bail!("{label}: wrangler exited with {status}");
     }
@@ -287,16 +285,30 @@ fn main() -> Result<()> {
         }
 
         Commands::Preview { output } => {
-            anyhow::ensure!(output.exists(), "Deploy directory not found: {}", output.display());
+            anyhow::ensure!(
+                output.exists(),
+                "Deploy directory not found: {}",
+                output.display()
+            );
             println!("Starting local preview server...");
             cmd_wrangler(&["pages", "dev", &output.to_string_lossy()], "preview")?;
         }
 
         Commands::Deploy { output, project } => {
-            anyhow::ensure!(output.exists(), "Deploy directory not found: {}", output.display());
+            anyhow::ensure!(
+                output.exists(),
+                "Deploy directory not found: {}",
+                output.display()
+            );
             println!("Deploying to Cloudflare Pages project '{project}'...");
             cmd_wrangler(
-                &["pages", "deploy", &output.to_string_lossy(), "--project-name", &project],
+                &[
+                    "pages",
+                    "deploy",
+                    &output.to_string_lossy(),
+                    "--project-name",
+                    &project,
+                ],
                 "deploy",
             )?;
         }
