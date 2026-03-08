@@ -81,9 +81,7 @@ impl WebAudioEngine {
                     on_err.forget();
                 }
                 Err(e) => {
-                    web_sys::console::error_1(
-                        &format!("track {id} play() failed: {e:?}").into(),
-                    );
+                    web_sys::console::error_1(&format!("track {id} play() failed: {e:?}").into());
                 }
             }
         }
