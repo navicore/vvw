@@ -17,9 +17,9 @@ pub fn assemble(workspace_root: &Path, albums: &[String], output: &Path) -> Resu
 
     std::fs::create_dir_all(output)?;
 
-    // Copy index.html → player.html
-    std::fs::copy(dist.join("index.html"), output.join("player.html"))
-        .context("Failed to copy index.html as player.html")?;
+    // Copy index.html
+    std::fs::copy(dist.join("index.html"), output.join("index.html"))
+        .context("Failed to copy index.html")?;
 
     // Copy .js and .wasm files to output root
     for entry in std::fs::read_dir(&dist)? {
@@ -65,7 +65,7 @@ pub fn assemble(workspace_root: &Path, albums: &[String], output: &Path) -> Resu
     }
 
     // Write Cloudflare Pages _redirects
-    std::fs::write(output.join("_redirects"), "/*  /player.html  200\n")
+    std::fs::write(output.join("_redirects"), "/*  /index.html  200\n")
         .context("Failed to write _redirects")?;
 
     Ok(())

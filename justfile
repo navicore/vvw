@@ -91,10 +91,10 @@ test-wasm:
 assemble-deploy:
     @echo "Assembling deploy directory..."
     mkdir -p deploy
-    cp crates/vvw-web/dist/index.html deploy/player.html
+    cp crates/vvw-web/dist/index.html deploy/index.html
     cp crates/vvw-web/dist/*.js deploy/ 2>/dev/null || true
     cp crates/vvw-web/dist/*.wasm deploy/ 2>/dev/null || true
-    printf '/*  /player.html  200\n' > deploy/_redirects
+    printf '/*  /index.html  200\n' > deploy/_redirects
     @echo "Deploy directory assembled."
 
 # Check for outdated dependencies
