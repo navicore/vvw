@@ -69,7 +69,9 @@ pub async fn load_project() -> Result<LoadedProject, JsValue> {
         format!("{base_path}audio/")
     } else {
         // R2: audio is at <r2_base>/<album_path>/audio/
-        format!("{r2_base}{base_path}audio/")
+        // base_path starts with "/" — strip it to avoid double slash
+        let album_path = base_path.trim_start_matches('/');
+        format!("{r2_base}{album_path}audio/")
     };
 
     web_sys::console::log_1(&format!("Audio base URL: {audio_base_url}").into());

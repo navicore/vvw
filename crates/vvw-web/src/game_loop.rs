@@ -148,35 +148,25 @@ fn setup_overlay_click(game: Rc<RefCell<Game>>) -> Result<(), JsValue> {
     let overlay = document.get_element_by_id("overlay").ok_or("no overlay")?;
 
     let closure = Closure::once(move || {
-        wasm_bindgen_futures::spawn_local(async move {
-            // Resume audio context (required by browser autoplay policy)
-            let resume_result = {
-                let g = game.borrow();
-                g.engine.resume()
-            };
-            match resume_result {
-                Ok(promise) => {
-                    if let Err(e) = wasm_bindgen_futures::JsFuture::from(promise).await {
-                        web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
-                    }
-                }
-                Err(e) => {
-                    web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
-                }
+        // Resume AudioContext and start playback synchronously within the click
+        // gesture so the browser permits autoplay.
+        {
+            let g = game.borrow();
+            if let Err(e) = g.engine.resume() {
+                web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
             }
+            g.engine.play_all();
+        }
 
-            let _ = ui::hide_overlay();
+        let _ = ui::hide_overlay();
 
-            {
-                let mut g = game.borrow_mut();
-                g.started = true;
-                // Start streaming playback on all tracks now that AudioContext is running
-                g.engine.play_all();
-            }
+        {
+            let mut g = game.borrow_mut();
+            g.started = true;
+        }
 
-            // Start the animation loop
-            start_animation_loop(game);
-        });
+        // Start the animation loop
+        start_animation_loop(game);
     });
 
     overlay.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;

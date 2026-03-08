@@ -37,8 +37,8 @@ impl WebAudioEngine {
         let audio_el = HtmlAudioElement::new_with_src(url)?;
         audio_el.set_loop(true);
         audio_el.set_preload("auto");
-        // Allow streaming from same origin without CORS issues
-        audio_el.set_cross_origin(None);
+        // CORS required for cross-origin R2 audio routed through Web Audio API
+        audio_el.set_cross_origin(Some("anonymous"));
 
         let source = self.ctx.create_media_element_source(&audio_el)?;
 
@@ -65,10 +65,27 @@ impl WebAudioEngine {
         Ok(())
     }
 
-    /// Start playback on all tracks. Call after `AudioContext` is resumed.
+    /// Start playback on all tracks. Must be called within a user gesture.
     pub fn play_all(&self) {
-        for track in self.tracks.values() {
-            let _ = track.audio_el.play();
+        for (id, track) in &self.tracks {
+            match track.audio_el.play() {
+                Ok(promise) => {
+                    // Log any rejection (e.g. autoplay blocked)
+                    let id = *id;
+                    let on_err = Closure::once(move |e: JsValue| {
+                        web_sys::console::error_1(
+                            &format!("track {id} play rejected: {e:?}").into(),
+                        );
+                    });
+                    let _ = promise.catch(&on_err);
+                    on_err.forget();
+                }
+                Err(e) => {
+                    web_sys::console::error_1(
+                        &format!("track {id} play() failed: {e:?}").into(),
+                    );
+                }
+            }
         }
     }
 
