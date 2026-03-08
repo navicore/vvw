@@ -123,6 +123,9 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn gain_below_threshold_snaps_to_zero() {
+        // NOTE: Like interpolation_converges_toward_target, this duplicates logic
+        // from update_spatial because that function requires a WebAudioEngine
+        // (browser-only). Full integration coverage needs headless browser tests.
         let mut state = TrackSpatialState::new(0, TilePos::new(1, 1));
         state.current_gain = GAIN_SILENCE_THRESHOLD / 2.0;
 
