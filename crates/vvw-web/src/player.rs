@@ -209,13 +209,12 @@ mod tests {
             player.update(&pressing("left"), &maze, dt);
         }
 
-        // Player should not have crossed into the wall tile
+        // Player circle edge should not penetrate the wall tile
         let wall_right_edge = 1.0 * TILE_SIZE;
+        let player_left_edge = player.x - player.radius;
         assert!(
-            player.x >= wall_right_edge,
-            "player should not penetrate wall: x={}, wall_right={}",
-            player.x,
-            wall_right_edge
+            player_left_edge >= wall_right_edge,
+            "player circle should not penetrate wall: left_edge={player_left_edge}, wall_right={wall_right_edge}",
         );
     }
 
@@ -236,6 +235,14 @@ mod tests {
             player.x > cx,
             "player should slide right along wall: x={cx} -> {}",
             player.x
+        );
+
+        // Y should be blocked: player circle must not penetrate the bottom wall (y=0)
+        let wall_top_edge = 1.0 * TILE_SIZE;
+        let player_bottom_edge = player.y - player.radius;
+        assert!(
+            player_bottom_edge >= wall_top_edge,
+            "player circle should not penetrate bottom wall: bottom_edge={player_bottom_edge}, wall_top={wall_top_edge}",
         );
     }
 

@@ -6,6 +6,9 @@ use vvw_core::tiles::TilePos;
 
 use crate::audio::WebAudioEngine;
 
+/// Gain values below this threshold are snapped to zero to avoid inaudible processing
+const GAIN_SILENCE_THRESHOLD: f32 = 0.001;
+
 /// Per-track spatial audio interpolation state
 pub struct TrackSpatialState {
     pub track_id: usize,
@@ -63,7 +66,7 @@ pub fn update_spatial(
         track.current_gain += (track.target_gain - track.current_gain) * lerp_factor;
         track.current_pan += (track.target_pan - track.current_pan) * lerp_factor;
 
-        if track.current_gain < 0.001 {
+        if track.current_gain < GAIN_SILENCE_THRESHOLD {
             track.current_gain = 0.0;
         }
 
@@ -96,7 +99,9 @@ mod tests {
         state.target_gain = 1.0;
         state.target_pan = -0.5;
 
-        // Simulate several frames of interpolation (same formula as update_spatial)
+        // NOTE: This duplicates the lerp formula from update_spatial because that
+        // function requires a WebAudioEngine (browser-only). Integration coverage
+        // of the full update_spatial path needs headless browser tests.
         let dt = 1.0 / 60.0;
         for _ in 0..300 {
             let lerp_factor = (state.fade_speed * dt).min(1.0);
@@ -119,10 +124,9 @@ mod tests {
     #[wasm_bindgen_test]
     fn gain_below_threshold_snaps_to_zero() {
         let mut state = TrackSpatialState::new(0, TilePos::new(1, 1));
-        state.current_gain = 0.0005; // below 0.001 threshold
+        state.current_gain = GAIN_SILENCE_THRESHOLD / 2.0;
 
-        // Same threshold logic as update_spatial
-        if state.current_gain < 0.001 {
+        if state.current_gain < GAIN_SILENCE_THRESHOLD {
             state.current_gain = 0.0;
         }
 
