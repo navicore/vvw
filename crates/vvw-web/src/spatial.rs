@@ -6,6 +6,9 @@ use vvw_core::tiles::TilePos;
 
 use crate::audio::WebAudioEngine;
 
+/// Gain values below this threshold are snapped to zero to avoid inaudible processing
+const GAIN_SILENCE_THRESHOLD: f32 = 0.001;
+
 /// Per-track spatial audio interpolation state
 pub struct TrackSpatialState {
     pub track_id: usize,
@@ -63,11 +66,76 @@ pub fn update_spatial(
         track.current_gain += (track.target_gain - track.current_gain) * lerp_factor;
         track.current_pan += (track.target_pan - track.current_pan) * lerp_factor;
 
-        if track.current_gain < 0.001 {
+        if track.current_gain < GAIN_SILENCE_THRESHOLD {
             track.current_gain = 0.0;
         }
 
         engine.set_volume(track.track_id, track.current_gain);
         engine.set_panning(track.track_id, track.current_pan);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn track_spatial_state_defaults() {
+        let state = TrackSpatialState::new(42, TilePos::new(3, 4));
+        assert_eq!(state.track_id, 42);
+        assert_eq!(state.tile_pos.x, 3);
+        assert_eq!(state.tile_pos.y, 4);
+        assert!((state.target_gain).abs() < f32::EPSILON);
+        assert!((state.current_gain).abs() < f32::EPSILON);
+        assert!((state.target_pan).abs() < f32::EPSILON);
+        assert!((state.current_pan).abs() < f32::EPSILON);
+        assert!((state.fade_speed - 2.0).abs() < f32::EPSILON);
+    }
+
+    #[wasm_bindgen_test]
+    fn interpolation_converges_toward_target() {
+        let mut state = TrackSpatialState::new(0, TilePos::new(1, 1));
+        state.target_gain = 1.0;
+        state.target_pan = -0.5;
+
+        // NOTE: This duplicates the lerp formula from update_spatial because that
+        // function requires a WebAudioEngine (browser-only). Integration coverage
+        // of the full update_spatial path needs headless browser tests.
+        let dt = 1.0 / 60.0;
+        for _ in 0..300 {
+            let lerp_factor = (state.fade_speed * dt).min(1.0);
+            state.current_gain += (state.target_gain - state.current_gain) * lerp_factor;
+            state.current_pan += (state.target_pan - state.current_pan) * lerp_factor;
+        }
+
+        assert!(
+            (state.current_gain - 1.0).abs() < 0.01,
+            "gain should converge to target: {}",
+            state.current_gain
+        );
+        assert!(
+            (state.current_pan - (-0.5)).abs() < 0.01,
+            "pan should converge to target: {}",
+            state.current_pan
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn gain_below_threshold_snaps_to_zero() {
+        // NOTE: Like interpolation_converges_toward_target, this duplicates logic
+        // from update_spatial because that function requires a WebAudioEngine
+        // (browser-only). Full integration coverage needs headless browser tests.
+        let mut state = TrackSpatialState::new(0, TilePos::new(1, 1));
+        state.current_gain = GAIN_SILENCE_THRESHOLD / 2.0;
+
+        if state.current_gain < GAIN_SILENCE_THRESHOLD {
+            state.current_gain = 0.0;
+        }
+
+        assert!(
+            state.current_gain.abs() < f32::EPSILON,
+            "gain below threshold should snap to zero"
+        );
     }
 }

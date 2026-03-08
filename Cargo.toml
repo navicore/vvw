@@ -64,6 +64,7 @@ js-sys = "0.3"
 web-sys = "0.3"
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.2", features = ["js"] }
+wasm-bindgen-test = "0.3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

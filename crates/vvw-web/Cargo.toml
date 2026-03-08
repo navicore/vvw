@@ -7,7 +7,7 @@ license.workspace = true
 description = "VVW WASM web player - browser-based maze exploration with spatial audio"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 vvw-core = { path = "../vvw-core", default-features = false }
@@ -47,6 +47,9 @@ features = [
     "Location",
     "console",
 ]
+
+[dev-dependencies]
+wasm-bindgen-test.workspace = true
 
 [lints]
 workspace = true

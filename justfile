@@ -76,6 +76,11 @@ clean:
     cargo clean
     @echo "Clean complete."
 
+# Run WASM tests for vvw-web (requires wasm-pack)
+test-wasm:
+    @echo "Running WASM tests..."
+    wasm-pack test --node crates/vvw-web --lib
+
 # Check for outdated dependencies
 outdated:
     cargo outdated --workspace
