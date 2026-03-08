@@ -1,14 +1,16 @@
-//! Web Audio API engine: `AudioContext` + per-track gain/panner node chains
+//! Web Audio API engine: streaming `<audio>` elements routed through gain/panner nodes
+//!
+//! Uses `MediaElementAudioSourceNode` so the browser streams and decodes audio
+//! incrementally — no need to download entire files before playback begins.
 
 use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
-use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode, StereoPannerNode};
+use web_sys::{AudioContext, GainNode, HtmlAudioElement, StereoPannerNode};
 
-/// Per-track audio node chain: source(loop) -> gain -> panner -> destination
+/// Per-track audio node chain: `<audio>`(loop) -> media element source -> gain -> panner -> dest
 struct WebTrack {
-    _source: AudioBufferSourceNode,
+    audio_el: HtmlAudioElement,
     gain_node: GainNode,
     panner_node: StereoPannerNode,
 }
@@ -29,12 +31,16 @@ impl WebAudioEngine {
         })
     }
 
-    /// Decode audio bytes and create a looping source -> gain -> panner -> destination chain
-    pub async fn add_track(&mut self, id: usize, bytes: &[u8]) -> Result<(), JsValue> {
-        let buffer = self.decode_audio(bytes).await?;
-        let source = self.ctx.create_buffer_source()?;
-        source.set_buffer(Some(&buffer));
-        source.set_loop(true);
+    /// Create a streaming audio node chain for a track URL.
+    /// The browser streams and decodes the file — no full download required.
+    pub fn add_track(&mut self, id: usize, url: &str) -> Result<(), JsValue> {
+        let audio_el = HtmlAudioElement::new_with_src(url)?;
+        audio_el.set_loop(true);
+        audio_el.set_preload("auto");
+        // Allow streaming from same origin without CORS issues
+        audio_el.set_cross_origin(None);
+
+        let source = self.ctx.create_media_element_source(&audio_el)?;
 
         let gain_node = self.ctx.create_gain()?;
         gain_node.gain().set_value(0.0);
@@ -42,24 +48,28 @@ impl WebAudioEngine {
         let panner_node = StereoPannerNode::new(&self.ctx)?;
         panner_node.pan().set_value(0.0);
 
-        // Wire: source -> gain -> panner -> destination
+        // Wire: <audio> -> source -> gain -> panner -> destination
         source.connect_with_audio_node(&gain_node)?;
         gain_node.connect_with_audio_node(&panner_node)?;
         panner_node.connect_with_audio_node(&self.ctx.destination())?;
 
-        // Start the source (it won't produce sound until AudioContext is resumed)
-        source.start()?;
-
         self.tracks.insert(
             id,
             WebTrack {
-                _source: source,
+                audio_el,
                 gain_node,
                 panner_node,
             },
         );
 
         Ok(())
+    }
+
+    /// Start playback on all tracks. Call after `AudioContext` is resumed.
+    pub fn play_all(&self) {
+        for track in self.tracks.values() {
+            let _ = track.audio_el.play();
+        }
     }
 
     /// Set volume for a track (0.0 = silent, 1.0 = full)
@@ -80,16 +90,5 @@ impl WebAudioEngine {
     /// Returns a promise that resolves when the context is running.
     pub fn resume(&self) -> Result<js_sys::Promise, JsValue> {
         self.ctx.resume()
-    }
-
-    async fn decode_audio(&self, bytes: &[u8]) -> Result<AudioBuffer, JsValue> {
-        // Copy bytes into an ArrayBuffer
-        let uint8_array = js_sys::Uint8Array::new_with_length(bytes.len() as u32);
-        uint8_array.copy_from(bytes);
-        let array_buffer = uint8_array.buffer();
-
-        let promise = self.ctx.decode_audio_data(&array_buffer)?;
-        let result = JsFuture::from(promise).await?;
-        result.dyn_into()
     }
 }

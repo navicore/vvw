@@ -1,4 +1,4 @@
-//! VVW Deploy CLI — assemble saved desktop projects into a Cloudflare Pages deployment
+//! VVW Deploy CLI — assemble and deploy the WASM player to Cloudflare Pages + R2
 
 mod assemble;
 mod trunk_build;
@@ -21,7 +21,9 @@ enum Commands {
     /// List saved desktop projects
     List,
 
-    /// Assemble WASM player + album data into a deploy directory
+    /// Assemble WASM player + album manifests into a deploy directory.
+    /// When --audio-base-url is set, audio files are NOT copied (they go to R2).
+    /// Without it, audio files are included for local preview.
     Assemble {
         /// Album name(s) to include (from saved desktop projects)
         #[arg(required_unless_present = "all")]
@@ -38,16 +40,37 @@ enum Commands {
         /// Force rebuild even if dist/ is newer than sources
         #[arg(long)]
         rebuild: bool,
+
+        /// R2 public URL for audio files (e.g. `https://pub-xxx.r2.dev`).
+        /// When set, audio files are excluded from the deploy directory
+        /// and a _config.json is written pointing the player to R2.
+        #[arg(long)]
+        audio_base_url: Option<String>,
     },
 
-    /// Run a local preview server via wrangler
+    /// Upload audio files to Cloudflare R2
+    UploadAudio {
+        /// Album name(s) to upload
+        #[arg(required_unless_present = "all")]
+        albums: Vec<String>,
+
+        /// Upload all saved projects
+        #[arg(long)]
+        all: bool,
+
+        /// R2 bucket name
+        #[arg(long, default_value = "vvw-audio")]
+        bucket: String,
+    },
+
+    /// Run a local preview server via wrangler (includes audio for local testing)
     Preview {
         /// Deploy directory to serve (default: ./deploy)
         #[arg(long, short, default_value = "deploy")]
         output: PathBuf,
     },
 
-    /// Deploy to Cloudflare Pages
+    /// Deploy the player shell to Cloudflare Pages (audio served from R2)
     Deploy {
         /// Deploy directory (default: ./deploy)
         #[arg(long, short, default_value = "deploy")]
@@ -146,6 +169,75 @@ pub fn safe_album_path(output: &Path, album: &str) -> Result<PathBuf> {
     Ok(joined)
 }
 
+/// Resolve album names from CLI args (explicit list or --all).
+fn resolve_albums(albums: Vec<String>, all: bool) -> Result<Vec<String>> {
+    if all {
+        let names = list_projects();
+        if names.is_empty() {
+            anyhow::bail!("No saved projects found");
+        }
+        Ok(names)
+    } else {
+        Ok(albums)
+    }
+}
+
+/// Upload a single file to R2 via wrangler.
+fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
+    let status = std::process::Command::new("wrangler")
+        .args([
+            "r2",
+            "object",
+            "put",
+            &format!("{bucket}/{key}"),
+            "--file",
+            &file.to_string_lossy(),
+            "--remote",
+        ])
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("wrangler r2 object put failed for {key}");
+    }
+    Ok(())
+}
+
+fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
+    for album in album_names {
+        let src = project_dir(album);
+        let audio_dir = src.join("audio");
+        anyhow::ensure!(
+            audio_dir.exists(),
+            "No audio directory for '{}' at {}",
+            album,
+            audio_dir.display()
+        );
+
+        for entry in std::fs::read_dir(&audio_dir)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file() {
+                continue;
+            }
+            let filename = entry.file_name();
+            let key = format!("{album}/audio/{}", filename.to_string_lossy());
+            print!("  Uploading {key}...");
+            r2_put(bucket, &key, &entry.path())?;
+            println!(" ok");
+        }
+        println!("  + {album} audio uploaded to R2 bucket '{bucket}'");
+    }
+    Ok(())
+}
+
+fn cmd_wrangler(args: &[&str], label: &str) -> Result<()> {
+    let status = std::process::Command::new("wrangler")
+        .args(args)
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("{label}: wrangler exited with {status}");
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -167,21 +259,17 @@ fn main() -> Result<()> {
             all,
             output,
             rebuild,
+            audio_base_url,
         } => {
-            let album_names = if all {
-                let names = list_projects();
-                if names.is_empty() {
-                    anyhow::bail!("No saved projects found");
-                }
-                names
-            } else {
-                albums
-            };
-
+            let album_names = resolve_albums(albums, all)?;
             let workspace_root = trunk_build::find_workspace_root()?;
             trunk_build::build_wasm(&workspace_root, rebuild)?;
-            assemble::assemble(&workspace_root, &album_names, &output)?;
-
+            assemble::assemble(
+                &workspace_root,
+                &album_names,
+                &output,
+                audio_base_url.as_deref(),
+            )?;
             println!(
                 "Assembled {} album(s) into {}",
                 album_names.len(),
@@ -189,40 +277,28 @@ fn main() -> Result<()> {
             );
         }
 
+        Commands::UploadAudio {
+            albums,
+            all,
+            bucket,
+        } => {
+            let album_names = resolve_albums(albums, all)?;
+            cmd_upload_audio(&album_names, &bucket)?;
+        }
+
         Commands::Preview { output } => {
-            anyhow::ensure!(
-                output.exists(),
-                "Deploy directory not found: {}",
-                output.display()
-            );
+            anyhow::ensure!(output.exists(), "Deploy directory not found: {}", output.display());
             println!("Starting local preview server...");
-            let status = std::process::Command::new("wrangler")
-                .args(["pages", "dev", &output.to_string_lossy()])
-                .status()?;
-            if !status.success() {
-                anyhow::bail!("wrangler exited with {status}");
-            }
+            cmd_wrangler(&["pages", "dev", &output.to_string_lossy()], "preview")?;
         }
 
         Commands::Deploy { output, project } => {
-            anyhow::ensure!(
-                output.exists(),
-                "Deploy directory not found: {}",
-                output.display()
-            );
+            anyhow::ensure!(output.exists(), "Deploy directory not found: {}", output.display());
             println!("Deploying to Cloudflare Pages project '{project}'...");
-            let status = std::process::Command::new("wrangler")
-                .args([
-                    "pages",
-                    "deploy",
-                    &output.to_string_lossy(),
-                    "--project-name",
-                    &project,
-                ])
-                .status()?;
-            if !status.success() {
-                anyhow::bail!("wrangler exited with {status}");
-            }
+            cmd_wrangler(
+                &["pages", "deploy", &output.to_string_lossy(), "--project-name", &project],
+                "deploy",
+            )?;
         }
 
         Commands::Clean { album, output } => {

@@ -35,9 +35,10 @@ pub struct Game {
 }
 
 impl Game {
-    /// Build the game from a loaded project, decoding all audio tracks (async)
-    pub async fn build(loaded: LoadedProject) -> Result<Self, JsValue> {
+    /// Build the game from a loaded project, setting up streaming audio tracks
+    pub fn build(loaded: LoadedProject) -> Result<Self, JsValue> {
         let maze = loaded.manifest.maze;
+        let audio_base_url = &loaded.audio_base_url;
 
         // Find player start
         let start = maze
@@ -65,7 +66,7 @@ impl Game {
             }
         }
 
-        // Decode audio and build track spatial states
+        // Set up streaming audio tracks (no download — browser streams on play)
         let mut tracks = Vec::new();
         for entry in &loaded.manifest.tracks {
             let Some(tile_pos) = track_tile_map.get(&entry.track_id) else {
@@ -75,17 +76,16 @@ impl Game {
                 continue;
             };
 
-            if let Some(bytes) = loaded.audio_data.get(&entry.track_id) {
-                engine.add_track(entry.track_id, bytes).await?;
-                tracks.push(TrackSpatialState::new(entry.track_id, *tile_pos));
-                web_sys::console::log_1(
-                    &format!(
-                        "Decoded track {} ({}) at ({},{})",
-                        entry.track_id, entry.original_filename, tile_pos.x, tile_pos.y
-                    )
-                    .into(),
-                );
-            }
+            let url = format!("{audio_base_url}{}.audio", entry.track_id);
+            engine.add_track(entry.track_id, &url)?;
+            tracks.push(TrackSpatialState::new(entry.track_id, *tile_pos));
+            web_sys::console::log_1(
+                &format!(
+                    "Streaming track {} ({}) at ({},{})",
+                    entry.track_id, entry.original_filename, tile_pos.x, tile_pos.y
+                )
+                .into(),
+            );
         }
 
         // Pre-build track position set for rendering (avoids per-frame allocation)
@@ -170,6 +170,8 @@ fn setup_overlay_click(game: Rc<RefCell<Game>>) -> Result<(), JsValue> {
             {
                 let mut g = game.borrow_mut();
                 g.started = true;
+                // Start streaming playback on all tracks now that AudioContext is running
+                g.engine.play_all();
             }
 
             // Start the animation loop

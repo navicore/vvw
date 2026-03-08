@@ -43,8 +43,8 @@ async fn run() -> Result<(), JsValue> {
     // Populate album info on the overlay
     ui::populate_album_info(&loaded.manifest.album);
 
-    // Build game state and decode all audio tracks
-    let game = game_loop::Game::build(loaded).await?;
+    // Build game state and set up streaming audio tracks
+    let game = game_loop::Game::build(loaded)?;
 
     // Set up overlay click handler to start audio and begin the game loop
     game_loop::start(game)?;

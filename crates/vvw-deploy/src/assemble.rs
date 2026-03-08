@@ -1,4 +1,7 @@
-//! Assembly logic: copy WASM player + album data into deploy directory
+//! Assembly logic: copy WASM player + album manifests into deploy directory
+//!
+//! Audio files are NOT included — they go to R2 via the `upload-audio` command.
+//! The player discovers the R2 URL from `_config.json`.
 
 use std::path::Path;
 
@@ -6,8 +9,13 @@ use anyhow::{Context, Result};
 
 use crate::{project_dir, safe_album_path, trunk_build};
 
-/// Assemble the deploy directory with the WASM player and album data.
-pub fn assemble(workspace_root: &Path, albums: &[String], output: &Path) -> Result<()> {
+/// Assemble the deploy directory with the WASM player and album manifests (no audio).
+pub fn assemble(
+    workspace_root: &Path,
+    albums: &[String],
+    output: &Path,
+    audio_base_url: Option<&str>,
+) -> Result<()> {
     let dist = trunk_build::dist_dir(workspace_root);
     anyhow::ensure!(
         dist.join("index.html").exists(),
@@ -35,7 +43,7 @@ pub fn assemble(workspace_root: &Path, albums: &[String], output: &Path) -> Resu
         }
     }
 
-    // Copy each album's project.ron + audio/ into output/<album>/
+    // Copy each album's project.ron (no audio — that goes to R2)
     for album in albums {
         let src = project_dir(album);
         anyhow::ensure!(
@@ -48,20 +56,30 @@ pub fn assemble(workspace_root: &Path, albums: &[String], output: &Path) -> Resu
         let album_out = safe_album_path(output, album)?;
         std::fs::create_dir_all(&album_out)?;
 
-        // Copy project.ron
+        // Copy project.ron only
         std::fs::copy(src.join("project.ron"), album_out.join("project.ron"))
             .with_context(|| format!("Failed to copy project.ron for '{album}'"))?;
 
-        // Copy audio/ directory
-        let audio_src = src.join("audio");
-        if audio_src.exists() {
-            let audio_dst = album_out.join("audio");
-            std::fs::create_dir_all(&audio_dst)?;
-            copy_dir_contents(&audio_src, &audio_dst)
-                .with_context(|| format!("Failed to copy audio for '{album}'"))?;
+        // For local preview (no R2), also copy audio files
+        if audio_base_url.is_none() {
+            let audio_src = src.join("audio");
+            if audio_src.exists() {
+                let audio_dst = album_out.join("audio");
+                std::fs::create_dir_all(&audio_dst)?;
+                copy_dir_contents(&audio_src, &audio_dst)
+                    .with_context(|| format!("Failed to copy audio for '{album}'"))?;
+            }
         }
 
         println!("  + {album}");
+    }
+
+    // Write _config.json with R2 audio URL (if provided)
+    if let Some(url) = audio_base_url {
+        let config = format!("{{\"audio_base_url\":\"{url}\"}}");
+        std::fs::write(output.join("_config.json"), config)
+            .context("Failed to write _config.json")?;
+        println!("  Audio URL: {url}");
     }
 
     // Write Cloudflare Pages _redirects
