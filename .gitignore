@@ -1,5 +1,6 @@
 # Build artifacts
 /target/
+.claude/
 **/*.rs.bk
 Cargo.lock
 
@@ -17,3 +18,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Deploy output
+/deploy/
+crates/vvw-web/dist/

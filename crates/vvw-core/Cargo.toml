@@ -6,8 +6,13 @@ authors.workspace = true
 license.workspace = true
 description = "VVW core types and math - platform-independent, WASM-safe"
 
+[features]
+default = ["bevy-ecs"]
+bevy-ecs = ["bevy"]
+
 [dependencies]
-bevy.workspace = true
+bevy = { workspace = true, optional = true }
+glam = "0.30"
 serde.workspace = true
 rand.workspace = true
 

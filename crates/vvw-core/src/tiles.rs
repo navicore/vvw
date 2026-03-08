@@ -1,6 +1,5 @@
 //! Tile types and grid position utilities
 
-use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Size of each tile in world units
@@ -33,7 +32,8 @@ impl TileKind {
 }
 
 /// Grid position component (discrete tile coordinates)
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "bevy-ecs", derive(bevy::prelude::Component))]
 pub struct TilePos {
     pub x: i32,
     pub y: i32,
@@ -46,15 +46,15 @@ impl TilePos {
     }
 
     /// Convert tile position to world position (center of tile)
-    pub fn to_world(self) -> Vec2 {
-        Vec2::new(
+    pub fn to_world(self) -> glam::Vec2 {
+        glam::Vec2::new(
             (self.x as f32).mul_add(TILE_SIZE, TILE_SIZE / 2.0),
             (self.y as f32).mul_add(TILE_SIZE, TILE_SIZE / 2.0),
         )
     }
 
     /// Convert world position to tile position
-    pub fn from_world(world: Vec2) -> Self {
+    pub fn from_world(world: glam::Vec2) -> Self {
         Self {
             x: (world.x / TILE_SIZE).floor() as i32,
             y: (world.y / TILE_SIZE).floor() as i32,
@@ -111,12 +111,12 @@ impl Direction {
     }
 
     /// Convert to a unit vector
-    pub const fn as_vec2(self) -> Vec2 {
+    pub const fn as_vec2(self) -> glam::Vec2 {
         match self {
-            Self::Up => Vec2::new(0.0, 1.0),
-            Self::Down => Vec2::new(0.0, -1.0),
-            Self::Left => Vec2::new(-1.0, 0.0),
-            Self::Right => Vec2::new(1.0, 0.0),
+            Self::Up => glam::Vec2::new(0.0, 1.0),
+            Self::Down => glam::Vec2::new(0.0, -1.0),
+            Self::Left => glam::Vec2::new(-1.0, 0.0),
+            Self::Right => glam::Vec2::new(1.0, 0.0),
         }
     }
 }

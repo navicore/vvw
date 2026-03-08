@@ -64,7 +64,7 @@ pub const DEFAULT_MAX_DISTANCE: f32 = 15.0;
 
 /// Calculate stereo pan value from player and track positions.
 /// Returns a value in [-1.0, 1.0] where -1.0 = full left, 1.0 = full right.
-pub fn calculate_pan(player_world: bevy::math::Vec2, track_world: bevy::math::Vec2) -> f32 {
+pub fn calculate_pan(player_world: glam::Vec2, track_world: glam::Vec2) -> f32 {
     let diff = track_world - player_world;
     let distance = diff.length();
     if distance < 0.001 {
@@ -161,28 +161,19 @@ mod tests {
 
     #[test]
     fn pan_track_to_right() {
-        let pan = calculate_pan(
-            bevy::math::Vec2::new(0.0, 0.0),
-            bevy::math::Vec2::new(10.0, 0.0),
-        );
+        let pan = calculate_pan(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 0.0));
         assert!((pan - 1.0).abs() < 0.01);
     }
 
     #[test]
     fn pan_track_to_left() {
-        let pan = calculate_pan(
-            bevy::math::Vec2::new(0.0, 0.0),
-            bevy::math::Vec2::new(-10.0, 0.0),
-        );
+        let pan = calculate_pan(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(-10.0, 0.0));
         assert!((pan - (-1.0)).abs() < 0.01);
     }
 
     #[test]
     fn pan_track_centered() {
-        let pan = calculate_pan(
-            bevy::math::Vec2::new(0.0, 0.0),
-            bevy::math::Vec2::new(0.0, 10.0),
-        );
+        let pan = calculate_pan(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(0.0, 10.0));
         assert!(pan.abs() < 0.01);
     }
 }

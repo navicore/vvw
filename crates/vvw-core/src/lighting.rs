@@ -1,11 +1,11 @@
 //! Lighting configuration — platform-independent tunable parameters
 
-use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Tunable lighting parameters. Mutated by UI sliders; applied to
 /// actual light components each frame.
-#[derive(Resource, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "bevy-ecs", derive(bevy::prelude::Resource))]
 pub struct LightingConfig {
     pub ambient_brightness: f32,
     pub player_intensity: f32,
