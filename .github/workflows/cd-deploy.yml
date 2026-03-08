@@ -1,0 +1,72 @@
+name: CD - Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+
+# CD Strategy:
+# - Builds the WASM player with trunk
+# - Assembles a deploy directory (player shell, no album data)
+# - Deploys to Cloudflare Pages via wrangler
+#
+# Album data is managed separately (via local vvw-deploy or future content workflow).
+# The player loads album data at runtime from relative URL paths.
+#
+# IMPORTANT: This workflow uses `just` recipes where possible.
+# The justfile is the source of truth for build logic.
+
+jobs:
+  deploy:
+    name: Deploy WASM Player
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.93.0
+        targets: wasm32-unknown-unknown
+
+    - name: Install Just
+      uses: extractions/setup-just@v2
+
+    - name: Install trunk
+      uses: cargo-bins/cargo-binstall@main
+    - run: cargo binstall trunk --no-confirm
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: wasm-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: wasm-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: wasm-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build WASM player
+      run: just build-wasm
+
+    - name: Assemble deploy directory
+      run: just assemble-deploy
+
+    - name: Deploy to Cloudflare Pages
+      uses: cloudflare/wrangler-action@v3
+      with:
+        apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        command: pages deploy deploy --project-name=vvw

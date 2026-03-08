@@ -1,6 +1,7 @@
 # Build artifacts
 /target/
 .claude/
+.wrangler/
 **/*.rs.bk
 Cargo.lock
 

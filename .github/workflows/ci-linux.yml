@@ -64,3 +64,48 @@ jobs:
 
     - name: Run CI checks (just ci)
       run: just ci
+
+  ci-wasm:
+    name: CI - WASM
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.93.0
+        targets: wasm32-unknown-unknown
+
+    - name: Install Just
+      uses: extractions/setup-just@v2
+
+    - name: Install trunk
+      uses: cargo-bins/cargo-binstall@main
+    - run: cargo binstall trunk wasm-pack --no-confirm
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: wasm-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: wasm-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: wasm-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run WASM tests (just test-wasm)
+      run: just test-wasm
+
+    - name: Build WASM player (just build-wasm)
+      run: just build-wasm
