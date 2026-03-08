@@ -15,8 +15,7 @@ mod ui;
 use wasm_bindgen::prelude::*;
 
 /// WASM entry point — called automatically when the module loads
-#[cfg(not(test))]
-#[wasm_bindgen(start)]
+#[cfg_attr(not(test), wasm_bindgen(start))]
 pub fn main() {
     console_error_panic_hook::set_once();
     web_sys::console::log_1(&"VVW web player initializing...".into());

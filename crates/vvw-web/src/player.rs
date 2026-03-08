@@ -138,19 +138,26 @@ mod tests {
         maze
     }
 
-    fn input(up: bool, down: bool, left: bool, right: bool) -> InputState {
+    const NO_INPUT: InputState = InputState {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+    };
+
+    fn pressing(direction: &str) -> InputState {
         InputState {
-            up,
-            down,
-            left,
-            right,
+            up: direction.contains("up"),
+            down: direction.contains("down"),
+            left: direction.contains("left"),
+            right: direction.contains("right"),
         }
     }
 
     fn center_of(tx: i32, ty: i32) -> (f32, f32) {
         (
-            tx as f32 * TILE_SIZE + TILE_SIZE / 2.0,
-            ty as f32 * TILE_SIZE + TILE_SIZE / 2.0,
+            (tx as f32).mul_add(TILE_SIZE, TILE_SIZE / 2.0),
+            (ty as f32).mul_add(TILE_SIZE, TILE_SIZE / 2.0),
         )
     }
 
@@ -170,7 +177,7 @@ mod tests {
         let mut player = Player::new(cx, cy);
         let dt = 1.0 / 60.0;
 
-        player.update(&input(false, false, false, true), &maze, dt);
+        player.update(&pressing("right"), &maze, dt);
         assert!(player.x > cx, "player should have moved right");
         assert!(
             (player.y - cy).abs() < 0.01,
@@ -185,7 +192,7 @@ mod tests {
         let mut player = Player::new(cx, cy);
         let dt = 1.0 / 60.0;
 
-        player.update(&input(true, false, false, false), &maze, dt);
+        player.update(&pressing("up"), &maze, dt);
         assert!(player.y > cy, "player should have moved up");
     }
 
@@ -199,7 +206,7 @@ mod tests {
 
         // Push left into wall for many frames
         for _ in 0..120 {
-            player.update(&input(false, false, true, false), &maze, dt);
+            player.update(&pressing("left"), &maze, dt);
         }
 
         // Player should not have crossed into the wall tile
@@ -222,7 +229,7 @@ mod tests {
 
         // Move down-right: Y should be blocked by wall, X should still move
         for _ in 0..30 {
-            player.update(&input(false, true, false, true), &maze, dt);
+            player.update(&pressing("down right"), &maze, dt);
         }
 
         assert!(
@@ -240,13 +247,13 @@ mod tests {
 
         // Move right only
         let mut p_cardinal = Player::new(cx, cy);
-        p_cardinal.update(&input(false, false, false, true), &maze, dt);
-        let cardinal_dist = ((p_cardinal.x - cx).powi(2) + (p_cardinal.y - cy).powi(2)).sqrt();
+        p_cardinal.update(&pressing("right"), &maze, dt);
+        let cardinal_dist = (p_cardinal.x - cx).hypot(p_cardinal.y - cy);
 
         // Move up-right (diagonal)
         let mut p_diagonal = Player::new(cx, cy);
-        p_diagonal.update(&input(true, false, false, true), &maze, dt);
-        let diagonal_dist = ((p_diagonal.x - cx).powi(2) + (p_diagonal.y - cy).powi(2)).sqrt();
+        p_diagonal.update(&pressing("up right"), &maze, dt);
+        let diagonal_dist = (p_diagonal.x - cx).hypot(p_diagonal.y - cy);
 
         // Distances should be approximately equal (normalization prevents faster diagonal)
         let ratio = diagonal_dist / cardinal_dist;
@@ -262,10 +269,10 @@ mod tests {
         let (cx, cy) = center_of(2, 2);
         let mut player = Player::new(cx, cy);
         let dt = 1.0 / 60.0;
-        let no_input = input(false, false, false, false);
+        let no_input = NO_INPUT;
 
         // Give player a push
-        player.update(&input(false, false, false, true), &maze, dt);
+        player.update(&pressing("right"), &maze, dt);
         let vx_after_push = player.vx;
         assert!(vx_after_push > 0.0);
 
