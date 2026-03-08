@@ -12,7 +12,7 @@ bevy-ecs = ["bevy"]
 
 [dependencies]
 bevy = { workspace = true, optional = true }
-glam = "0.30"
+glam.workspace = true
 serde.workspace = true
 rand.workspace = true
 

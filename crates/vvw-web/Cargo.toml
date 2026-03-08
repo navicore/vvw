@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 vvw-core = { path = "../vvw-core", default-features = false }
-glam = "0.30"
+glam.workspace = true
 ron.workspace = true
 serde.workspace = true
 wasm-bindgen.workspace = true
