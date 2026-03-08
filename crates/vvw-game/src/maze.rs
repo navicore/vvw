@@ -1,4 +1,8 @@
 //! Maze rendering and plugin — game-specific systems built on `vvw_core::maze`
+//!
+//! The platform layer (desktop app or web player) is responsible for loading
+//! the maze and inserting it as a `Maze` resource before the game runs.
+//! This module handles rendering, collision, lighting, and respawning.
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
@@ -6,11 +10,7 @@ use vvw_light::{LightOccluder2d, LightOccluderGrid, PointLight2d};
 
 pub use vvw_core::maze::Maze;
 
-use crate::audio::{
-    AlbumMetadataResource, TrackAudioFile, TrackAudioFiles, TrackAudioState, TrackIdCounter,
-};
-use crate::mazegen::{MazeGenConfig, MazeGenState, generate_initial_maze};
-use crate::project::{self, StartupProject};
+use crate::audio::TrackAudioState;
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
 /// Marker component for maze tiles (for cleanup)
@@ -31,13 +31,17 @@ pub struct TrackLight;
 #[derive(Message)]
 pub struct MazeChanged;
 
-/// Plugin for maze loading and rendering
+/// Plugin for maze rendering.
+///
+/// Expects a `Maze` resource to be inserted by the platform layer before
+/// `PostStartup`. The plugin handles the occluder grid sync and runtime
+/// respawning when the maze changes.
 pub struct MazePlugin;
 
 impl Plugin for MazePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<MazeChanged>()
-            .add_systems(Startup, (setup_maze, sync_occluder_grid).chain())
+            .add_systems(PostStartup, sync_occluder_grid)
             .add_systems(Update, (respawn_maze_tiles, sync_occluder_grid).chain());
     }
 }
@@ -52,66 +56,9 @@ pub mod colors {
     pub const TRACK_ICON: Color = Color::srgb(0.8, 0.4, 0.2);
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn setup_maze(mut commands: Commands, startup_project: Option<Res<StartupProject>>) {
-    if let Some(name) = startup_project.as_ref().and_then(|p| p.0.as_deref()) {
-        let path = project::project_dir(name);
-        match project::load_project(&path) {
-            Ok((manifest, audio_bytes)) => {
-                tracing::info!("Loading project '{}' from {}", name, path.display());
-                spawn_maze_tiles(&mut commands, &manifest.maze);
-
-                // Set track counter to max id + 1
-                let next_id = manifest
-                    .tracks
-                    .iter()
-                    .map(|t| t.track_id.saturating_add(1))
-                    .max()
-                    .unwrap_or(0);
-                commands.insert_resource(TrackIdCounter(next_id));
-
-                // Store audio bytes for later replay (in load_project_audio)
-                let mut track_files = TrackAudioFiles::default();
-                for entry in &manifest.tracks {
-                    if let Some(bytes) = audio_bytes.get(&entry.track_id) {
-                        track_files.files.insert(
-                            entry.track_id,
-                            TrackAudioFile {
-                                original_filename: entry.original_filename.clone(),
-                                bytes: bytes.clone(),
-                                metadata: entry.metadata.clone(),
-                            },
-                        );
-                    }
-                }
-                commands.insert_resource(track_files);
-
-                let state = MazeGenState {
-                    rooms: manifest.rooms,
-                    config: manifest.maze_config,
-                };
-                commands.insert_resource(manifest.lighting);
-                commands.insert_resource(AlbumMetadataResource(manifest.album));
-                commands.insert_resource(manifest.maze);
-                commands.insert_resource(state);
-                return;
-            }
-            Err(e) => {
-                tracing::error!("Failed to load project from {}: {e}", path.display());
-                tracing::info!("Falling back to fresh maze");
-            }
-        }
-    }
-
-    // Default: generate fresh maze
-    let config = MazeGenConfig::default();
-    let (maze, state) = generate_initial_maze(&config);
-    spawn_maze_tiles(&mut commands, &maze);
-    commands.insert_resource(maze);
-    commands.insert_resource(state);
-}
-
-/// Spawn all tile sprites for the current maze state
+/// Spawn all tile sprites for the current maze state.
+///
+/// Call this from your platform's startup system after inserting the `Maze` resource.
 pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
     for y in 0..maze.height {
         for x in 0..maze.width {
