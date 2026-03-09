@@ -347,6 +347,7 @@ fn handle_maze_regen(
     mut maze: ResMut<Maze>,
     mut state: ResMut<MazeGenState>,
     track_audio: Res<TrackAudioFiles>,
+    mut handles: ResMut<TrackHandles>,
     mut maze_changed: MessageWriter<MazeChanged>,
     mut player_query: Query<&mut Transform, With<Player>>,
 ) {
@@ -367,9 +368,14 @@ fn handle_maze_regen(
     *maze = new_maze;
     state.rooms = new_state.rooms;
 
-    // Grow a room + corridor for each track
+    // Grow a room + corridor for each track; stop orphaned handles on failure
     for &track_id in &track_ids {
-        mazegen::grow_maze(&mut maze, &mut state, track_id);
+        if mazegen::grow_maze(&mut maze, &mut state, track_id).is_none() {
+            tracing::warn!("Maze regen could not place track {track_id}; stopping its handle");
+            if let Some(mut handle) = handles.handles.remove(&track_id) {
+                handle.stop();
+            }
+        }
     }
 
     // Reposition player to the new start

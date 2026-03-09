@@ -120,7 +120,7 @@ fn setup_web_maze(mut commands: Commands, maze: Res<Maze>) {
 /// `VvwGamePlugin`'s spatial audio systems) and pushes them to the Web Audio nodes.
 #[allow(clippy::needless_pass_by_value)]
 fn web_audio_sync(
-    engine: NonSendMut<WebAudioEngine>,
+    engine: NonSend<WebAudioEngine>,
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
 ) {
     for (track_icon, state) in &track_query {

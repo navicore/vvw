@@ -70,9 +70,11 @@ impl Plugin for SpatialAudioPlugin {
                 Update,
                 (
                     reset_new_tracks,
-                    (compute_spatial_targets, interpolate_and_send).chain(),
+                    compute_spatial_targets,
+                    interpolate_and_send,
                     apply_lighting_config,
                 )
+                    .chain()
                     .in_set(SpatialAudioSet),
             );
     }
