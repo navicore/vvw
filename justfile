@@ -112,6 +112,9 @@ test-wasm:
 
 # --- Deploy (Cloudflare Pages + R2) ---
 
+# R2 public URL for audio streaming
+R2_URL := "https://pub-5345c95a0bcc43f1a8702037c4d051d6.r2.dev"
+
 # List saved projects
 list-projects:
     cargo run -p vvw-deploy --release -- list
@@ -119,12 +122,14 @@ list-projects:
 # Assemble web player + album for local preview (includes audio files)
 assemble-local ALBUM OUTPUT="deploy":
     just build-web
+    rm -f {{OUTPUT}}/*.js {{OUTPUT}}/*.wasm
     cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}}
 
 # Assemble web player + album for Cloudflare (audio served from R2)
-assemble ALBUM AUDIO_URL OUTPUT="deploy":
+assemble ALBUM OUTPUT="deploy":
     just build-web
-    cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}} --audio-base-url {{AUDIO_URL}}
+    rm -f {{OUTPUT}}/*.js {{OUTPUT}}/*.wasm
+    cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}} --audio-base-url {{R2_URL}}
 
 # Upload audio files to R2
 upload-audio ALBUM:
@@ -138,11 +143,11 @@ preview OUTPUT="deploy":
 deploy-pages PROJECT="vvw" OUTPUT="deploy":
     cargo run -p vvw-deploy --release -- deploy --output {{OUTPUT}} --project {{PROJECT}}
 
-# Full deploy pipeline: upload audio → assemble → deploy
-deploy-full ALBUM AUDIO_URL PROJECT="vvw" OUTPUT="deploy":
+# Deploy album: upload audio to R2, assemble, deploy to Pages
+deploy-album ALBUM:
     just upload-audio {{ALBUM}}
-    just assemble {{ALBUM}} {{AUDIO_URL}} {{OUTPUT}}
-    just deploy-pages {{PROJECT}} {{OUTPUT}}
+    just assemble {{ALBUM}}
+    just deploy-pages
 
 # Clean an album from the deploy directory
 clean-album ALBUM OUTPUT="deploy":
