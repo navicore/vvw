@@ -7,18 +7,11 @@ license.workspace = true
 description = "VVW game plugin - 2D maze exploration with spatial audio"
 
 [dependencies]
-vvw-audio.workspace = true
 vvw-core.workspace = true
 vvw-light.workspace = true
 bevy.workspace = true
-bevy_egui.workspace = true
 leafwing-input-manager.workspace = true
 avian2d.workspace = true
-thiserror.workspace = true
-rand.workspace = true
-serde.workspace = true
-ron.workspace = true
-dirs.workspace = true
 tracing.workspace = true
 
 [lints]

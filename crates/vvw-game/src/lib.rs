@@ -1,42 +1,52 @@
-//! VVW Game Plugin
+//! VVW Game Plugin — platform-independent game logic
 //!
 //! Provides the core game functionality for the Visual Virtual World:
-//! - 2D maze rendering and navigation
+//! - 2D maze rendering with physics colliders and light occluders
 //! - Physics-based player movement (avian2d)
-//! - Spatial audio with line-of-sight
+//! - Spatial audio with line-of-sight gain/pan interpolation
+//! - Custom 2D lighting (vvw-light)
+//!
+//! Platform-specific code (audio backends, UI, file I/O) lives in the app layer.
+//! The platform inserts the `Maze` resource and populates `TrackHandles`;
+//! this plugin handles everything else.
 
 mod audio;
 mod camera;
 mod maze;
-mod mazegen;
+pub mod mazegen;
 mod player;
-pub mod project;
 mod spatial;
 mod tiles;
 
-pub use audio::AudioPlugin;
-pub use camera::CameraPlugin;
-pub use maze::{Maze, MazePlugin};
-pub use player::{Player, PlayerPlugin};
-pub use project::StartupProject;
-pub use tiles::{TileKind, TilePos};
+pub use audio::{
+    SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackHandles, TrackIdCounter,
+};
+pub use camera::{CameraPlugin, GameCamera};
+pub use maze::{
+    Maze, MazeChanged, MazePlugin, MazeTile, TrackIcon, TrackLight, colors, spawn_maze_tiles,
+};
+pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};
+pub use tiles::{TILE_SIZE, TileKind, TilePos};
 
 use avian2d::PhysicsPlugins;
 use avian2d::prelude::Gravity;
 use bevy::prelude::*;
-use bevy_egui::EguiPlugin;
 
-/// Main game plugin that bundles all VVW game systems
+/// Main game plugin — platform-independent core.
+///
+/// The platform layer must:
+/// 1. Insert a `Maze` resource before `PostStartup`
+/// 2. Call `spawn_maze_tiles` in a `Startup` system
+/// 3. Populate `TrackHandles` with audio backend handles
 pub struct VvwGamePlugin;
 
 impl Plugin for VvwGamePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Gravity(Vec2::ZERO)).add_plugins((
             PhysicsPlugins::default(),
-            EguiPlugin::default(),
             MazePlugin,
             PlayerPlugin,
-            AudioPlugin,
+            SpatialAudioPlugin,
             CameraPlugin,
         ));
     }

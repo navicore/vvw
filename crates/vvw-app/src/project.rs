@@ -12,10 +12,11 @@ use bevy::prelude::*;
 use vvw_core::project::AlbumMetadata;
 pub use vvw_core::project::{ProjectManifest, TrackEntry};
 
-use crate::audio::TrackAudioFile;
-use crate::maze::Maze;
-use crate::mazegen::MazeGenState;
 use vvw_core::lighting::LightingConfig;
+use vvw_core::mazegen::MazeGenState;
+use vvw_game::Maze;
+
+use crate::admin::TrackAudioFile;
 
 /// Resource holding the project name from the CLI `--project` arg.
 /// When set, the named project is loaded on startup.
@@ -180,7 +181,8 @@ pub fn load_project(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mazegen::{MazeGenConfig, generate_initial_maze};
+    use vvw_core::mazegen::{MazeGenConfig, generate_initial_maze};
+    use vvw_core::project::TrackMetadata;
 
     #[test]
     fn round_trip_empty_project() {
@@ -217,7 +219,7 @@ mod tests {
             TrackAudioFile {
                 original_filename: "song.mp3".to_string(),
                 bytes: vec![0xFF, 0xFB, 0x90, 0x00], // fake mp3 header
-                metadata: vvw_core::project::TrackMetadata::default(),
+                metadata: TrackMetadata::default(),
             },
         );
         track_audio.insert(
@@ -225,7 +227,7 @@ mod tests {
             TrackAudioFile {
                 original_filename: "beat.wav".to_string(),
                 bytes: vec![0x52, 0x49, 0x46, 0x46], // "RIFF"
-                metadata: vvw_core::project::TrackMetadata::default(),
+                metadata: TrackMetadata::default(),
             },
         );
 

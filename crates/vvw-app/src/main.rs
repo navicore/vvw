@@ -2,9 +2,15 @@
 //!
 //! An audio exploration game where you navigate mazes to discover music.
 
+pub mod admin;
+pub mod project;
+
 use bevy::prelude::*;
 use clap::Parser;
-use vvw_game::{StartupProject, VvwGamePlugin};
+use project::StartupProject;
+use vvw_game::VvwGamePlugin;
+
+use admin::AdminPlugin;
 
 /// VVW - Visual Virtual World audio exploration game
 #[derive(Parser, Debug)]
@@ -50,5 +56,6 @@ fn main() {
                                                     // bevy_audio is excluded at the feature level (Cargo.toml) — no AudioPlugin to disable
         )
         .add_plugins(VvwGamePlugin)
+        .add_plugins(AdminPlugin)
         .run();
 }

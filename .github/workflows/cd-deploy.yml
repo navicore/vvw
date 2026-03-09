@@ -59,14 +59,11 @@ jobs:
         key: wasm-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Build WASM player
-      run: just build-wasm
-
-    - name: Assemble deploy directory
-      run: just assemble-deploy
+      run: just build-web
 
     - name: Deploy to Cloudflare Pages
       uses: cloudflare/wrangler-action@v3
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        command: pages deploy deploy --project-name=vvw
+        command: pages deploy crates/vvw-web/dist --project-name=vvw

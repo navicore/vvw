@@ -107,5 +107,5 @@ jobs:
     - name: Run WASM tests (just test-wasm)
       run: just test-wasm
 
-    - name: Build WASM player (just build-wasm)
-      run: just build-wasm
+    - name: Build WASM player (just build-web)
+      run: just build-web

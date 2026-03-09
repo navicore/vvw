@@ -15,7 +15,9 @@ struct WebTrack {
     panner_node: StereoPannerNode,
 }
 
-/// Manages the Web Audio API context and all track playback
+/// Manages the Web Audio API context and all track playback.
+///
+/// Stored as a Bevy `NonSend` resource — web-sys types are `!Send`.
 pub struct WebAudioEngine {
     ctx: AudioContext,
     tracks: HashMap<usize, WebTrack>,
@@ -65,26 +67,15 @@ impl WebAudioEngine {
         Ok(())
     }
 
-    /// Start playback on all tracks. Must be called within a user gesture.
-    pub fn play_all(&self) {
-        for (id, track) in &self.tracks {
-            match track.audio_el.play() {
-                Ok(promise) => {
-                    // Log any rejection (e.g. autoplay blocked)
-                    let id = *id;
-                    let on_err = Closure::once(move |e: JsValue| {
-                        web_sys::console::error_1(
-                            &format!("track {id} play rejected: {e:?}").into(),
-                        );
-                    });
-                    let _ = promise.catch(&on_err);
-                    on_err.forget();
-                }
-                Err(e) => {
-                    web_sys::console::error_1(&format!("track {id} play() failed: {e:?}").into());
-                }
-            }
-        }
+    /// Clone the `AudioContext` reference for the overlay click handler.
+    pub fn ctx(&self) -> AudioContext {
+        self.ctx.clone()
+    }
+
+    /// Clone all audio element references for the overlay click handler.
+    /// These are needed to call `play()` within the user gesture.
+    pub fn audio_elements(&self) -> Vec<HtmlAudioElement> {
+        self.tracks.values().map(|t| t.audio_el.clone()).collect()
     }
 
     /// Set volume for a track (0.0 = silent, 1.0 = full)
@@ -99,11 +90,5 @@ impl WebAudioEngine {
         if let Some(track) = self.tracks.get(&id) {
             track.panner_node.pan().set_value(pan);
         }
-    }
-
-    /// Resume the `AudioContext` (must be called from a user gesture handler).
-    /// Returns a promise that resolves when the context is running.
-    pub fn resume(&self) -> Result<js_sys::Promise, JsValue> {
-        self.ctx.resume()
     }
 }
