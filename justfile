@@ -76,26 +76,68 @@ clean:
     cargo clean
     @echo "Clean complete."
 
-# Build WASM player (requires trunk + wasm32-unknown-unknown target)
-build-wasm:
+# --- WASM / Web ---
+
+# Build WASM web player (release, optimized)
+build-web:
     @echo "Building WASM player..."
     cd crates/vvw-web && trunk build --release
     @echo "WASM build complete."
+
+# Build WASM web player (dev, faster iteration)
+build-web-dev:
+    @echo "Building WASM player (dev)..."
+    cd crates/vvw-web && trunk build
+    @echo "WASM dev build complete."
+
+# Check web player compiles for WASM target
+check-web:
+    cargo check -p vvw-web --target wasm32-unknown-unknown
 
 # Run WASM tests for vvw-web (requires wasm-pack)
 test-wasm:
     @echo "Running WASM tests..."
     wasm-pack test --node crates/vvw-web --lib
 
-# Assemble deploy directory from trunk dist output (no album data)
-assemble-deploy:
-    @echo "Assembling deploy directory..."
-    mkdir -p deploy
-    cp crates/vvw-web/dist/index.html deploy/index.html
-    cp crates/vvw-web/dist/*.js deploy/ 2>/dev/null || true
-    cp crates/vvw-web/dist/*.wasm deploy/ 2>/dev/null || true
-    printf '/*  /index.html  200\n' > deploy/_redirects
-    @echo "Deploy directory assembled."
+# --- Deploy (Cloudflare Pages + R2) ---
+
+# List saved projects
+list-projects:
+    cargo run -p vvw-deploy --release -- list
+
+# Assemble web player + album for local preview (includes audio files)
+assemble-local ALBUM OUTPUT="deploy":
+    just build-web
+    cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}}
+
+# Assemble web player + album for Cloudflare (audio served from R2)
+assemble ALBUM AUDIO_URL OUTPUT="deploy":
+    just build-web
+    cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}} --audio-base-url {{AUDIO_URL}}
+
+# Upload audio files to R2
+upload-audio ALBUM:
+    cargo run -p vvw-deploy --release -- upload-audio {{ALBUM}}
+
+# Local preview server (run assemble-local first)
+preview OUTPUT="deploy":
+    cargo run -p vvw-deploy --release -- preview --output {{OUTPUT}}
+
+# Deploy to Cloudflare Pages
+deploy-pages PROJECT="vvw" OUTPUT="deploy":
+    cargo run -p vvw-deploy --release -- deploy --output {{OUTPUT}} --project {{PROJECT}}
+
+# Full deploy pipeline: upload audio → assemble → deploy
+deploy-full ALBUM AUDIO_URL PROJECT="vvw" OUTPUT="deploy":
+    just upload-audio {{ALBUM}}
+    just assemble {{ALBUM}} {{AUDIO_URL}} {{OUTPUT}}
+    just deploy-pages {{PROJECT}} {{OUTPUT}}
+
+# Clean an album from the deploy directory
+clean-album ALBUM OUTPUT="deploy":
+    cargo run -p vvw-deploy --release -- clean {{ALBUM}} --output {{OUTPUT}}
+
+# --- Misc ---
 
 # Check for outdated dependencies
 outdated:
