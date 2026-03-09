@@ -114,6 +114,7 @@ impl Plugin for AdminPlugin {
                     handle_project_save,
                     handle_project_load,
                     handle_maze_regen,
+                    refresh_project_list,
                 ),
             )
             .add_systems(EguiPrimaryContextPass, audio_ui_panel);
@@ -301,6 +302,9 @@ fn handle_file_drop(
         // so the next drop must use a fresh ID even if add_track fails below.
         counter.0 += 1;
 
+        // Maze was mutated — tiles must be re-rendered even if add_track fails
+        any_added = true;
+
         // Add track to kira (only after maze growth succeeded)
         let track = match manager.add_track(audio_bytes.clone()) {
             Ok(t) => t,
@@ -324,7 +328,6 @@ fn handle_file_drop(
         handles.handles.insert(track_id, Box::new(track));
 
         tracing::info!("Added track {track_id} from {}", path_buf.display(),);
-        any_added = true;
     }
 
     // Signal a single respawn after all drops are processed
@@ -534,6 +537,15 @@ fn handle_project_load(
     tracing::info!("Project '{name}' loaded from {}", path.display());
 }
 
+/// Refresh the cached project list in Update (not in the render pass) to avoid
+/// blocking the frame with filesystem I/O.
+fn refresh_project_list(mut project_list: ResMut<CachedProjectList>) {
+    if project_list.dirty {
+        project_list.names = project::list_projects();
+        project_list.dirty = false;
+    }
+}
+
 /// Render the audio track panel with `bevy_egui`
 #[allow(
     clippy::needless_pass_by_value,
@@ -549,7 +561,7 @@ fn audio_ui_panel(
     mut project_name: ResMut<ProjectNameInput>,
     mut save_events: MessageWriter<ProjectSaveRequested>,
     mut load_events: MessageWriter<ProjectLoadRequested>,
-    mut project_list: ResMut<CachedProjectList>,
+    project_list: Res<CachedProjectList>,
     mut panel_open: ResMut<UiPanelOpen>,
     mut regen_events: MessageWriter<MazeRegenRequested>,
     mut album_meta: ResMut<AlbumMetadataResource>,
@@ -596,10 +608,6 @@ fn audio_ui_panel(
                     }
                 });
 
-                if project_list.dirty {
-                    project_list.names = project::list_projects();
-                    project_list.dirty = false;
-                }
                 if !project_list.names.is_empty() {
                     ui.separator();
                     ui.label("Saved projects:");
