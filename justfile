@@ -78,10 +78,21 @@ clean:
 
 # --- WASM / Web ---
 
-# Build WASM web player (release, optimized)
+# Find wasm-opt: prefer PATH, fall back to trunk's cached copy
+WASM_OPT := `which wasm-opt 2>/dev/null || find ~/Library/Caches/dev.trunkrs.trunk ~/.cache/trunk -name wasm-opt -type f 2>/dev/null | head -1 || echo wasm-opt`
+
+# Build WASM web player (release, size-optimized for Cloudflare Pages 25 MiB limit)
 build-web:
     @echo "Building WASM player..."
-    cd crates/vvw-web && trunk build --release
+    cd crates/vvw-web && trunk build --release --cargo-profile release-wasm
+    @echo "Running wasm-opt ({{WASM_OPT}})..."
+    {{WASM_OPT}} --enable-bulk-memory --enable-mutable-globals --enable-sign-ext \
+        --enable-nontrapping-float-to-int --enable-simd --enable-reference-types \
+        --enable-multivalue -Oz \
+        -o crates/vvw-web/dist/vvw-web-opt.wasm \
+        crates/vvw-web/dist/*_bg.wasm
+    @# Replace the original with the optimized version
+    mv crates/vvw-web/dist/vvw-web-opt.wasm $(ls crates/vvw-web/dist/*_bg.wasm)
     @echo "WASM build complete."
 
 # Build WASM web player (dev, faster iteration)

@@ -3,6 +3,7 @@ name: CD - Deploy to Cloudflare Pages
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 # CD Strategy:
 # - Builds the WASM player with trunk
@@ -36,9 +37,9 @@ jobs:
     - name: Install Just
       uses: extractions/setup-just@v2
 
-    - name: Install trunk
+    - name: Install trunk and wasm tools
       uses: cargo-bins/cargo-binstall@main
-    - run: cargo binstall trunk --no-confirm
+    - run: cargo binstall trunk wasm-opt --no-confirm
 
     - name: Cache cargo registry
       uses: actions/cache@v4

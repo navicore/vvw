@@ -107,3 +107,10 @@ opt-level = 2  # Audio code needs some optimization even in debug
 lto = "thin"
 codegen-units = 1
 panic = "abort"
+
+# WASM-specific release profile: aggressive size optimizations
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+strip = true
