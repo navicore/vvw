@@ -18,7 +18,9 @@ mod player;
 mod spatial;
 mod tiles;
 
-pub use audio::{SpatialAudioPlugin, TrackAudioState, TrackHandles, TrackIdCounter};
+pub use audio::{
+    SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackHandles, TrackIdCounter,
+};
 pub use camera::{CameraPlugin, GameCamera};
 pub use maze::{
     Maze, MazeChanged, MazePlugin, MazeTile, TrackIcon, TrackLight, colors, spawn_maze_tiles,

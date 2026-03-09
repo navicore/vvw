@@ -123,8 +123,12 @@ pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
 }
 
 /// Populate the light occluder grid from maze wall data.
+/// Only runs when the `Maze` resource has changed, avoiding O(W*H) per frame.
 #[allow(clippy::needless_pass_by_value)]
 fn sync_occluder_grid(maze: Res<Maze>, mut grid: ResMut<LightOccluderGrid>) {
+    if !maze.is_changed() {
+        return;
+    }
     if grid.width != maze.width || grid.height != maze.height {
         *grid = LightOccluderGrid::new(maze.width, maze.height, TILE_SIZE);
     }

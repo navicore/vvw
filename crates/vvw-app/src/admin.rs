@@ -267,6 +267,23 @@ fn handle_file_drop(
             continue;
         }
 
+        // Guard against oversized files before reading into memory
+        match std::fs::metadata(path_buf) {
+            Ok(meta) if meta.len() > 500_000_000 => {
+                tracing::warn!(
+                    "Ignoring oversized file ({} bytes): {}",
+                    meta.len(),
+                    path_buf.display()
+                );
+                continue;
+            }
+            Err(e) => {
+                tracing::error!("Failed to read file metadata: {e}");
+                continue;
+            }
+            _ => {}
+        }
+
         // Read file bytes
         let Ok(audio_bytes) = std::fs::read(path_buf) else {
             tracing::error!("Failed to read file: {}", path_buf.display());
@@ -280,7 +297,16 @@ fn handle_file_drop(
             .unwrap_or("unknown")
             .to_string();
 
-        // Add track to kira
+        let track_id = counter.0;
+
+        // Grow maze BEFORE allocating audio resources — if the maze can't
+        // accommodate the track, we skip without leaking a kira handle.
+        let Some(_track_pos) = mazegen::grow_maze(&mut maze, &mut state, track_id) else {
+            tracing::error!("Failed to grow maze for new track");
+            continue;
+        };
+
+        // Add track to kira (only after maze growth succeeded)
         let track = match manager.add_track(audio_bytes.clone()) {
             Ok(t) => t,
             Err(e) => {
@@ -289,7 +315,6 @@ fn handle_file_drop(
             }
         };
 
-        let track_id = counter.0;
         counter.0 += 1;
 
         // Store raw audio for saving
@@ -301,12 +326,6 @@ fn handle_file_drop(
                 metadata: TrackMetadata::default(),
             },
         );
-
-        // Grow maze to accommodate new track
-        let Some(_track_pos) = mazegen::grow_maze(&mut maze, &mut state, track_id) else {
-            tracing::error!("Failed to grow maze for new track");
-            continue;
-        };
 
         // Store the kira handle (boxed as dyn TrackHandle)
         handles.handles.insert(track_id, Box::new(track));

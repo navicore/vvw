@@ -11,13 +11,14 @@ mod audio;
 mod project;
 mod ui;
 
-use std::collections::HashMap;
-
 use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlAudioElement;
 
-use vvw_game::{Maze, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin, spawn_maze_tiles};
+use vvw_game::{
+    Maze, SpatialAudioSet, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
+    spawn_maze_tiles,
+};
 
 use audio::WebAudioEngine;
 
@@ -53,26 +54,6 @@ async fn run() -> Result<(), JsValue> {
     // 3. Set up Web Audio engine with streaming tracks
     let mut engine = WebAudioEngine::new()?;
     let audio_base_url = &loaded.audio_base_url;
-
-    // Map track_id -> tile_pos from the maze
-    let maze = &loaded.manifest.maze;
-    let mut track_tile_map: HashMap<usize, vvw_core::tiles::TilePos> = HashMap::new();
-    for ((x, y), track_id) in &maze.track_ids {
-        track_tile_map.insert(
-            *track_id,
-            vvw_core::tiles::TilePos::new(*x as i32, *y as i32),
-        );
-    }
-
-    // Fallback: if track_ids map is empty, assign by order of track icons
-    if track_tile_map.is_empty() {
-        let track_icons = maze.find_track_icons();
-        for (i, entry) in loaded.manifest.tracks.iter().enumerate() {
-            if i < track_icons.len() {
-                track_tile_map.insert(entry.track_id, track_icons[i]);
-            }
-        }
-    }
 
     for entry in &loaded.manifest.tracks {
         let url = format!("{audio_base_url}{}.audio", entry.track_id);
@@ -121,7 +102,7 @@ async fn run() -> Result<(), JsValue> {
         }))
         .add_plugins(VvwGamePlugin)
         .add_systems(Startup, setup_web_maze)
-        .add_systems(Update, web_audio_sync)
+        .add_systems(Update, web_audio_sync.after(SpatialAudioSet))
         .run();
 
     Ok(())

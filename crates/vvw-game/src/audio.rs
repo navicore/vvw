@@ -51,6 +51,12 @@ impl Default for TrackAudioState {
     }
 }
 
+/// System set for spatial audio interpolation.
+/// Platform layers can use `.after(SpatialAudioSet)` to read `TrackAudioState`
+/// after gain/pan values have been updated for the current frame.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SpatialAudioSet;
+
 /// Spatial audio plugin: gain/pan interpolation and lighting sync.
 /// Platform-independent — works with any audio backend that implements [`TrackHandle`].
 pub struct SpatialAudioPlugin;
@@ -63,10 +69,28 @@ impl Plugin for SpatialAudioPlugin {
             .add_systems(
                 Update,
                 (
+                    reset_new_tracks,
                     (compute_spatial_targets, interpolate_and_send).chain(),
                     apply_lighting_config,
-                ),
+                )
+                    .in_set(SpatialAudioSet),
             );
+    }
+}
+
+/// When `TrackAudioState` is freshly spawned (e.g. after maze respawn), the kira
+/// handle may still be playing at its previous volume. Force it to zero+pause so
+/// there's no audible glitch until the spatial system fades it back in.
+#[allow(clippy::needless_pass_by_value)]
+fn reset_new_tracks(
+    new_tracks: Query<&TrackIcon, Added<TrackAudioState>>,
+    mut handles: ResMut<TrackHandles>,
+) {
+    for track_icon in &new_tracks {
+        if let Some(track) = handles.handles.get_mut(&track_icon.track_id) {
+            track.set_volume(0.0);
+            track.pause();
+        }
     }
 }
 
