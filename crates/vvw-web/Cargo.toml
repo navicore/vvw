@@ -40,7 +40,6 @@ features = [
     "HtmlElement",
     "Request",
     "RequestInit",
-    "RequestMode",
     "Response",
     "Headers",
     "CssStyleDeclaration",

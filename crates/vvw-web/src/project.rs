@@ -5,7 +5,7 @@
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, RequestMode, Response};
+use web_sys::{Request, RequestInit, Response};
 
 use vvw_core::project::ProjectManifest;
 
@@ -85,7 +85,6 @@ pub async fn load_project() -> Result<LoadedProject, JsValue> {
 async fn fetch_text(url: &str) -> Result<String, JsValue> {
     let opts = RequestInit::new();
     opts.set_method("GET");
-    opts.set_mode(RequestMode::SameOrigin);
 
     let request = Request::new_with_str_and_init(url, &opts)?;
     let window = web_sys::window().ok_or("no window")?;
