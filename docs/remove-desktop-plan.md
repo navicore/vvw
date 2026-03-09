@@ -10,14 +10,14 @@ becomes a CLI command. The only runtime is the web player.
 Add a `Create` subcommand to the existing `vvw-deploy` CLI:
 
 ```sh
-just create-album --title "Cognology" --artist "Ed" ./audio-files/
+just create-album --metadata metadata.ron ./audio-files/
 ```
 
 Which runs:
 
 ```sh
 cargo run -p vvw-deploy --release -- create ./audio-files/ \
-    --title "Cognology" --artist "Ed" --name cognology
+    --metadata metadata.ron --name cognology
 ```
 
 ### What it does
@@ -26,17 +26,50 @@ cargo run -p vvw-deploy --release -- create ./audio-files/ \
 2. Sort files alphabetically (deterministic track ordering)
 3. Generate a maze via `vvw_core::mazegen` — one room per track
 4. Copy each file as `{track_id}.audio` into the project's `audio/` dir
-5. Derive track metadata from filenames (or accept a metadata JSON/RON file)
+5. Load metadata from a required `--metadata` RON file (see below)
 6. Write `project.ron` manifest
 7. Print summary: track count, maze size, project path
 
+### Metadata requirement
+
+The `--metadata` flag is **required**. The Web UI overlay depends on rich
+metadata being present in `project.ron`. The metadata file must provide:
+
+- **Album-level** (all required): `title`, `artist`, `description`
+- **Album-level** (optional): `cover_art_url`, `release_date`, `links`
+- **Per-track** (all required): `title`, `artist`
+- **Per-track** (optional): `duration_secs`, `description`, `lyrics`, `links`
+
+Track entries in the metadata file are matched to audio files by filename.
+The CLI validates that every audio file has at least the required track fields
+and that all required album fields are present, failing with a clear error
+if anything is missing.
+
+Example `metadata.ron`:
+
+```ron
+(
+    album: (
+        title: "Cognology",
+        artist: "Ed",
+        description: "An album about thinking machines",
+    ),
+    tracks: [
+        ( filename: "01 First Light.flac", title: "First Light", artist: "Ed" ),
+        ( filename: "02 Deep End.flac", title: "Deep End", artist: "Ed", description: "The deep cut" ),
+    ],
+)
+```
+
+### Required flags
+
+- `--metadata metadata.ron` — album and per-track metadata (see above)
+
 ### Optional flags
 
-- `--name` — project name (default: derived from `--title`)
-- `--title` / `--artist` — album metadata
+- `--name` — project name (default: derived from album title)
 - `--room-size-min` / `--room-size-max` — maze gen params (sensible defaults)
 - `--corridor-length-min` / `--corridor-length-max`
-- `--metadata tracks.ron` — per-track title/artist overrides
 - `--regenerate` — regenerate maze for an existing project (keep audio)
 
 ## Crates to Delete
