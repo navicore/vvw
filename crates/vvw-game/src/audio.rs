@@ -114,6 +114,10 @@ fn compute_spatial_targets(
         let visible = spatial::has_line_of_sight(&maze, player_pos, *tile_pos);
         state.visible = visible;
 
+        // Always update pan so direction is current when LOS resumes
+        let track_world = tile_pos.to_world();
+        state.target_pan = spatial::calculate_pan(player_world, track_world);
+
         if visible {
             let distance = player_pos.distance(*tile_pos);
             state.target_gain = spatial::distance_gain(
@@ -121,8 +125,6 @@ fn compute_spatial_targets(
                 spatial::DEFAULT_HALF_DISTANCE,
                 spatial::DEFAULT_MAX_DISTANCE,
             );
-            let track_world = tile_pos.to_world();
-            state.target_pan = spatial::calculate_pan(player_world, track_world);
         } else {
             state.target_gain = 0.0;
         }

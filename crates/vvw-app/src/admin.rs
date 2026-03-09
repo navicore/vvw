@@ -267,28 +267,19 @@ fn handle_file_drop(
             continue;
         }
 
-        // Guard against oversized files before reading into memory
-        match std::fs::metadata(path_buf) {
-            Ok(meta) if meta.len() > 500_000_000 => {
-                tracing::warn!(
-                    "Ignoring oversized file ({} bytes): {}",
-                    meta.len(),
-                    path_buf.display()
-                );
-                continue;
-            }
-            Err(e) => {
-                tracing::error!("Failed to read file metadata: {e}");
-                continue;
-            }
-            _ => {}
-        }
-
-        // Read file bytes
+        // Read file bytes and reject oversized files
         let Ok(audio_bytes) = std::fs::read(path_buf) else {
             tracing::error!("Failed to read file: {}", path_buf.display());
             continue;
         };
+        if audio_bytes.len() > 500_000_000 {
+            tracing::warn!(
+                "Ignoring oversized file ({} bytes): {}",
+                audio_bytes.len(),
+                path_buf.display()
+            );
+            continue;
+        }
 
         // Retain a copy for project saving
         let original_filename = path_buf
@@ -306,6 +297,10 @@ fn handle_file_drop(
             continue;
         };
 
+        // Advance counter immediately — the maze room exists for this ID now,
+        // so the next drop must use a fresh ID even if add_track fails below.
+        counter.0 += 1;
+
         // Add track to kira (only after maze growth succeeded)
         let track = match manager.add_track(audio_bytes.clone()) {
             Ok(t) => t,
@@ -314,8 +309,6 @@ fn handle_file_drop(
                 continue;
             }
         };
-
-        counter.0 += 1;
 
         // Store raw audio for saving
         track_audio.files.insert(
