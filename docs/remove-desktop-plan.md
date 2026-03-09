@@ -10,33 +10,77 @@ becomes a CLI command. The only runtime is the web player.
 Add a `Create` subcommand to the existing `vvw-deploy` CLI:
 
 ```sh
-just create-album --title "Cognology" --artist "Ed" ./audio-files/
+just create-album ./audio-files/
 ```
 
 Which runs:
 
 ```sh
-cargo run -p vvw-deploy --release -- create ./audio-files/ \
-    --title "Cognology" --artist "Ed" --name cognology
+cargo run -p vvw-deploy --release -- create ./audio-files/
 ```
 
 ### What it does
 
 1. Scan the directory for audio files (wav/mp3/ogg/flac)
 2. Sort files alphabetically (deterministic track ordering)
-3. Generate a maze via `vvw_core::mazegen` — one room per track
-4. Copy each file as `{track_id}.audio` into the project's `audio/` dir
-5. Derive track metadata from filenames (or accept a metadata JSON/RON file)
-6. Write `project.ron` manifest
-7. Print summary: track count, maze size, project path
+3. Generate a metadata template RON pre-populated with discovered filenames
+4. Open the template in `$EDITOR` (falls back to `$VISUAL`, then `vi`)
+5. On save+quit, validate required fields — abort with error if incomplete
+6. Generate a maze via `vvw_core::mazegen` — one room per track
+7. Copy each file as `{track_id}.audio` into the project's `audio/` dir
+8. Write `project.ron` manifest
+9. Print summary: track count, maze size, project path
+
+### Editor workflow (like `git commit`)
+
+When no `--metadata` flag is given, the CLI writes a temporary RON file
+pre-populated with the scanned audio filenames and opens it in the user's
+editor. The template includes comment hints explaining each field:
+
+```ron
+// Album metadata — fill in the required fields, then save and quit.
+// Lines starting with // are stripped before parsing.
+(
+    album: (
+        title: "",        // REQUIRED
+        artist: "",       // REQUIRED
+        description: "",  // REQUIRED
+        // cover_art_url: None,
+        // release_date: None,
+        // links: [],
+    ),
+    tracks: [
+        // One entry per audio file found. title and artist are REQUIRED.
+        ( filename: "01 First Light.flac", title: "", artist: "" ),
+        ( filename: "02 Deep End.flac", title: "", artist: "" ),
+    ],
+)
+```
+
+Editor resolution order: `$EDITOR` → `$VISUAL` → `vi`.
+
+If the user quits without saving or leaves required fields empty, the CLI
+aborts with a clear message (same as `git commit` on empty message).
+
+### Metadata validation
+
+The Web UI overlay depends on rich metadata in `project.ron`. Required fields:
+
+- **Album-level** (required): `title`, `artist`, `description`
+- **Album-level** (optional): `cover_art_url`, `release_date`, `links`
+- **Per-track** (required): `title`, `artist`
+- **Per-track** (optional): `duration_secs`, `description`, `lyrics`, `links`
+
+Every audio file must have a matching track entry with at least the required
+fields. The CLI validates completeness and fails with a clear error listing
+any missing fields.
 
 ### Optional flags
 
-- `--name` — project name (default: derived from `--title`)
-- `--title` / `--artist` — album metadata
+- `--metadata metadata.ron` — skip the editor, load metadata from a file (for scripting/CI)
+- `--name` — project name (default: derived from album title)
 - `--room-size-min` / `--room-size-max` — maze gen params (sensible defaults)
 - `--corridor-length-min` / `--corridor-length-max`
-- `--metadata tracks.ron` — per-track title/artist overrides
 - `--regenerate` — regenerate maze for an existing project (keep audio)
 
 ## Crates to Delete

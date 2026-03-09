@@ -10,7 +10,7 @@ The web player is deployed and functional on Cloudflare Pages. Albums are create
 
 ### Remove Desktop App (planned)
 Replace `vvw-app` (Bevy GUI) and `vvw-audio` (kira) with a CLI subcommand `vvw-deploy create`. See `docs/remove-desktop-plan.md` for the full plan. Key steps:
-- Add `Create` subcommand to `vvw-deploy` (scan audio dir, generate maze, write `project.ron`)
+- Add `Create` subcommand to `vvw-deploy` (scan audio dir, require metadata RON, generate maze, write `project.ron`)
 - Strip `TrackHandles` from `vvw-game` (simplify to state-only audio bridge)
 - Delete `vvw-app` and `vvw-audio` crates
 - Clean up workspace config and CI
@@ -19,7 +19,6 @@ Replace `vvw-app` (Bevy GUI) and `vvw-audio` (kira) with a CLI subcommand `vvw-d
 
 - **Web UI overlay**: Render album title, artist, and track info around the Bevy canvas
 - **Player avatar**: Improve the player sprite rendering
-- **Add `.wrangler/` to `.gitignore`**
 
 ## Known Limitations
 
