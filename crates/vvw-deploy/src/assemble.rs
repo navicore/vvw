@@ -56,9 +56,13 @@ pub fn assemble(
         let album_out = safe_album_path(output, album)?;
         std::fs::create_dir_all(&album_out)?;
 
-        // Copy project.ron only
+        // Copy project.ron
         std::fs::copy(src.join("project.ron"), album_out.join("project.ron"))
             .with_context(|| format!("Failed to copy project.ron for '{album}'"))?;
+
+        // Copy index.html into album dir so /AlbumName/ serves the SPA
+        std::fs::copy(dist.join("index.html"), album_out.join("index.html"))
+            .with_context(|| format!("Failed to copy index.html for '{album}'"))?;
 
         // For local preview (no R2), also copy audio files
         if audio_base_url.is_none() {
@@ -82,9 +86,15 @@ pub fn assemble(
         println!("  Audio URL: {url}");
     }
 
-    // Write Cloudflare Pages _redirects
-    std::fs::write(output.join("_redirects"), "/*  /index.html  200\n")
-        .context("Failed to write _redirects")?;
+    // Remove _redirects if it exists from a previous assemble
+    let _ = std::fs::remove_file(output.join("_redirects"));
+
+    // Write Cloudflare Pages _headers to set correct MIME types
+    std::fs::write(
+        output.join("_headers"),
+        "/*.wasm\n  Content-Type: application/wasm\n",
+    )
+    .context("Failed to write _headers")?;
 
     Ok(())
 }
