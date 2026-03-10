@@ -356,6 +356,14 @@ fn main() -> Result<()> {
             corridor_length_min,
             corridor_length_max,
         } => {
+            anyhow::ensure!(
+                room_size_min <= room_size_max,
+                "--room-size-min ({room_size_min}) must be <= --room-size-max ({room_size_max})"
+            );
+            anyhow::ensure!(
+                corridor_length_min <= corridor_length_max,
+                "--corridor-length-min ({corridor_length_min}) must be <= --corridor-length-max ({corridor_length_max})"
+            );
             let maze_config = vvw_core::mazegen::MazeGenConfig {
                 min_room_size: room_size_min,
                 max_room_size: room_size_max,

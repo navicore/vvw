@@ -88,8 +88,14 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
         anyhow::bail!("Could not derive project name from album title — use --name");
     }
 
+    // Sanitize: reject path traversal in --name
+    let base = projects_dir();
+    std::fs::create_dir_all(&base)
+        .with_context(|| format!("creating projects dir: {}", base.display()))?;
+    let _ = crate::safe_album_path(&base, &project_name)?;
+
     // 5. Set up project directory
-    let project_dir = projects_dir().join(&project_name);
+    let project_dir = base.join(&project_name);
     let audio_out = project_dir.join("audio");
     std::fs::create_dir_all(&audio_out)
         .with_context(|| format!("creating project dir: {}", project_dir.display()))?;
@@ -117,7 +123,11 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             .tracks
             .iter()
             .find(|t| t.filename == filename)
-            .expect("validated: every audio file has metadata");
+            .with_context(|| {
+                format!(
+                    "no metadata entry for '{filename}' (file may have been renamed after scan)"
+                )
+            })?;
 
         tracks.push(TrackEntry {
             track_id: i,
@@ -211,13 +221,17 @@ fn edit_metadata(audio_files: &[PathBuf]) -> Result<InputMetadata> {
     let tmp_path = tmp_dir.join("vvw-album-metadata.ron");
     std::fs::write(&tmp_path, &template)?;
 
-    // Resolve editor
+    // Resolve editor — supports args like "emacs -nw" or "code --wait"
     let editor = std::env::var("EDITOR")
         .or_else(|_| std::env::var("VISUAL"))
         .unwrap_or_else(|_| "vi".to_string());
 
+    let parts: Vec<&str> = editor.split_whitespace().collect();
+    let (cmd, extra_args) = parts.split_first().context("EDITOR is empty")?;
+
     // Open editor
-    let status = std::process::Command::new(&editor)
+    let status = std::process::Command::new(cmd)
+        .args(extra_args)
         .arg(&tmp_path)
         .status()
         .with_context(|| format!("launching editor: {editor}"))?;
@@ -266,9 +280,10 @@ fn build_template(audio_files: &[PathBuf]) -> String {
 
     for file in audio_files {
         let name = file.file_name().unwrap_or_default().to_string_lossy();
+        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(
             s,
-            "        ( filename: \"{name}\", title: \"\", artist: \"\" ),"
+            "        ( filename: \"{escaped}\", title: \"\", artist: \"\" ),"
         );
     }
 
