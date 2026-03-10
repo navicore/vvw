@@ -196,13 +196,16 @@
                 if (data.links) {
                     data.links.split('||').forEach(function(pair) {
                         var parts = pair.split('|');
-                        if (parts.length === 2) {
+                        if (parts.length >= 2) {
+                            var label = parts[0];
+                            var url = parts.slice(1).join('|');
+                            if (!/^https?:\/\//i.test(url)) return;
                             var li = document.createElement('li');
                             var a = document.createElement('a');
-                            a.textContent = parts[0];
-                            a.href = parts[1];
+                            a.textContent = label;
+                            a.href = url;
                             a.target = '_blank';
-                            a.rel = 'noopener';
+                            a.rel = 'noopener noreferrer';
                             li.appendChild(a);
                             linksEl.appendChild(li);
                         }

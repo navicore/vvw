@@ -11,23 +11,16 @@ mod audio;
 mod project;
 mod ui;
 
-use std::collections::HashMap;
-
 use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlAudioElement;
 
-use vvw_core::project::TrackMetadata;
 use vvw_game::{
     Maze, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
     spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
-
-/// Track metadata indexed by `track_id`, available as a Bevy resource
-#[derive(Resource, Default)]
-struct TrackMetadataMap(HashMap<usize, TrackMetadata>);
 
 /// WASM entry point — called automatically when the module loads
 #[cfg_attr(not(test), wasm_bindgen(start))]
@@ -88,13 +81,7 @@ async fn run() -> Result<(), JsValue> {
     let elements_for_click = engine.audio_elements();
     setup_overlay_click(ctx_for_click, elements_for_click)?;
 
-    // 5. Build track metadata map and inject into DOM
-    let mut track_meta_map = TrackMetadataMap::default();
-    for entry in &loaded.manifest.tracks {
-        track_meta_map
-            .0
-            .insert(entry.track_id, entry.metadata.clone());
-    }
+    // 5. Inject track metadata into DOM for the foldout
     ui::inject_track_metadata(&loaded.manifest.tracks);
 
     // 6. Create and run Bevy app
@@ -105,7 +92,6 @@ async fn run() -> Result<(), JsValue> {
         .insert_resource(maze)
         .insert_resource(lighting)
         .insert_resource(TrackIdCounter(next_id))
-        .insert_resource(track_meta_map)
         .insert_non_send_resource(engine)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -121,7 +107,10 @@ async fn run() -> Result<(), JsValue> {
         .add_systems(Startup, setup_web_maze)
         .add_systems(
             Update,
-            (web_audio_sync.after(SpatialAudioSet), handle_track_clicks),
+            (
+                web_audio_sync.after(SpatialAudioSet),
+                handle_track_clicks.after(SpatialAudioSet),
+            ),
         )
         .run();
 
