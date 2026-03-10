@@ -1,6 +1,7 @@
 //! VVW Deploy CLI — assemble and deploy the WASM player to Cloudflare Pages + R2
 
 mod assemble;
+mod create;
 mod trunk_build;
 
 use std::path::{Path, PathBuf};
@@ -79,6 +80,38 @@ enum Commands {
         /// Cloudflare Pages project name
         #[arg(long)]
         project: String,
+    },
+
+    /// Create a new album from a directory of audio files.
+    /// Opens $EDITOR with a metadata template (like `git commit`).
+    /// Use --metadata to skip the editor and load from a file instead.
+    Create {
+        /// Directory containing audio files (wav/mp3/ogg/flac)
+        audio_dir: PathBuf,
+
+        /// Load metadata from a RON file instead of opening an editor
+        #[arg(long)]
+        metadata: Option<PathBuf>,
+
+        /// Project name (default: derived from album title)
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Minimum room size for maze generation
+        #[arg(long, default_value = "3")]
+        room_size_min: usize,
+
+        /// Maximum room size for maze generation
+        #[arg(long, default_value = "7")]
+        room_size_max: usize,
+
+        /// Minimum corridor length for maze generation
+        #[arg(long, default_value = "4")]
+        corridor_length_min: usize,
+
+        /// Maximum corridor length for maze generation
+        #[arg(long, default_value = "8")]
+        corridor_length_max: usize,
     },
 
     /// Remove an album's subdirectory from the deploy directory
@@ -236,6 +269,7 @@ fn cmd_wrangler(args: &[&str], label: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -311,6 +345,38 @@ fn main() -> Result<()> {
                 ],
                 "deploy",
             )?;
+        }
+
+        Commands::Create {
+            audio_dir,
+            metadata,
+            name,
+            room_size_min,
+            room_size_max,
+            corridor_length_min,
+            corridor_length_max,
+        } => {
+            anyhow::ensure!(
+                room_size_min <= room_size_max,
+                "--room-size-min ({room_size_min}) must be <= --room-size-max ({room_size_max})"
+            );
+            anyhow::ensure!(
+                corridor_length_min <= corridor_length_max,
+                "--corridor-length-min ({corridor_length_min}) must be <= --corridor-length-max ({corridor_length_max})"
+            );
+            let maze_config = vvw_core::mazegen::MazeGenConfig {
+                min_room_size: room_size_min,
+                max_room_size: room_size_max,
+                min_corridor_length: corridor_length_min,
+                max_corridor_length: corridor_length_max,
+                ..Default::default()
+            };
+            create::create_album(&create::CreateOptions {
+                audio_dir,
+                metadata_file: metadata,
+                name,
+                maze_config,
+            })?;
         }
 
         Commands::Clean { album, output } => {
