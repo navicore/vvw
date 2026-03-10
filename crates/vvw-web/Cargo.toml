@@ -43,6 +43,8 @@ features = [
     "Response",
     "Headers",
     "CssStyleDeclaration",
+    "CustomEvent",
+    "CustomEventInit",
     "Location",
     "console",
 ]
