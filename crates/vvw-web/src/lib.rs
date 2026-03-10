@@ -144,7 +144,7 @@ fn handle_track_clicks(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<vvw_game::GameCamera>>,
-    track_query: Query<(&TrackIcon, &Transform, &TrackAudioState)>,
+    track_query: Query<(&TrackIcon, &GlobalTransform, &TrackAudioState)>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -167,11 +167,11 @@ fn handle_track_clicks(
     let click_radius = TILE_SIZE * 1.5;
     let mut best: Option<(usize, f32)> = None;
 
-    for (icon, transform, state) in &track_query {
+    for (icon, global_transform, state) in &track_query {
         if state.current_gain < 0.01 {
             continue; // Skip inaudible tracks
         }
-        let dist = world_pos.distance(transform.translation.truncate());
+        let dist = world_pos.distance(global_transform.translation().truncate());
         if dist < click_radius && (best.is_none() || dist < best.unwrap().1) {
             best = Some((icon.track_id, dist));
         }

@@ -194,22 +194,21 @@
                 var linksEl = document.getElementById('track-info-links');
                 linksEl.innerHTML = '';
                 if (data.links) {
-                    data.links.split('||').forEach(function(pair) {
-                        var parts = pair.split('|');
-                        if (parts.length >= 2) {
-                            var label = parts[0];
-                            var url = parts.slice(1).join('|');
+                    try {
+                        JSON.parse(data.links).forEach(function(pair) {
+                            if (!Array.isArray(pair) || pair.length < 2) return;
+                            var url = pair[1];
                             if (!/^https?:\/\//i.test(url)) return;
                             var li = document.createElement('li');
                             var a = document.createElement('a');
-                            a.textContent = label;
+                            a.textContent = pair[0];
                             a.href = url;
                             a.target = '_blank';
                             a.rel = 'noopener noreferrer';
                             li.appendChild(a);
                             linksEl.appendChild(li);
-                        }
-                    });
+                        });
+                    } catch (e) { /* ignore malformed JSON */ }
                 }
                 linksEl.style.display = linksEl.children.length ? '' : 'none';
 
@@ -223,7 +222,7 @@
             }
 
             document.addEventListener('track-select', function(e) {
-                var trackId = e.detail;
+                var trackId = String(e.detail);
                 if (currentTrackId === trackId) {
                     hideTrack();
                 } else {

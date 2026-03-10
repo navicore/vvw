@@ -51,16 +51,22 @@ pub fn inject_track_metadata(tracks: &[TrackEntry]) {
         if let Some(ref lyrics) = entry.metadata.lyrics {
             el.set_attribute("data-lyrics", lyrics).ok();
         }
-        // Encode links as "label|url" pairs separated by "||"
+        // Encode links as JSON array of [label, url] pairs
         if !entry.metadata.links.is_empty() {
-            let links_str: String = entry
+            let links_json: Vec<String> = entry
                 .metadata
                 .links
                 .iter()
-                .map(|(label, url)| format!("{label}|{url}"))
-                .collect::<Vec<_>>()
-                .join("||");
-            el.set_attribute("data-links", &links_str).ok();
+                .map(|(label, url)| {
+                    format!(
+                        "[\"{}\",\"{}\"]",
+                        label.replace('\\', "\\\\").replace('"', "\\\""),
+                        url.replace('\\', "\\\\").replace('"', "\\\"")
+                    )
+                })
+                .collect();
+            let json = format!("[{}]", links_json.join(","));
+            el.set_attribute("data-links", &json).ok();
         }
         container.append_child(&el).ok();
     }
@@ -76,7 +82,7 @@ pub fn dispatch_track_select(track_id: usize) {
     };
 
     let init = web_sys::CustomEventInit::new();
-    init.set_detail(&JsValue::from(track_id as u32));
+    init.set_detail(&JsValue::from(track_id.to_string()));
 
     if let Ok(event) = web_sys::CustomEvent::new_with_event_init_dict("track-select", &init) {
         let _ = document.dispatch_event(&event);
