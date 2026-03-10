@@ -103,6 +103,11 @@ pub fn assemble(
     )
     .context("Failed to write _headers")?;
 
+    // Write _routes.json to prevent SPA fallback for static assets.
+    // Without this, Cloudflare Pages serves index.html for .ron, .json, .audio etc.
+    let routes = r#"{"version":1,"include":["/*"],"exclude":["/*.js","/*.wasm","/_config.json","/_headers","/*/project.ron","/*/audio/*"]}"#;
+    std::fs::write(output.join("_routes.json"), routes).context("Failed to write _routes.json")?;
+
     Ok(())
 }
 
