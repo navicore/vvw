@@ -87,7 +87,7 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
     let start_pos = maze.find_player_start().unwrap_or(TilePos::new(1, 1));
     let world_pos = start_pos.to_world();
 
-    let player_size = TILE_SIZE * 0.8;
+    let player_size = TILE_SIZE * 0.5;
 
     commands
         .spawn((
@@ -103,9 +103,9 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
             },
             Transform::from_xyz(world_pos.x, world_pos.y, 2.0), // Above tiles
             PlayerAction::input_map(),
-            // Physics components
+            // Physics components — circle collider slides past wall corners
             RigidBody::Dynamic,
-            Collider::rectangle(player_size, player_size),
+            Collider::circle(player_size / 2.0),
             Friction::new(0.5),
             Restitution::new(0.5),
             LinearDamping(3.0),
