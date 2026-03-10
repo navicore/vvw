@@ -6,25 +6,235 @@
     <title>VVW Player</title>
     <link data-trunk rel="rust" data-wasm-opt="0" />
     <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0d0d1a; }
-        canvas { display: block; width: 100%; height: 100%; }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0a14; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+        /* Page layout: header + canvas + foldout fill viewport */
+        #page { display: flex; flex-direction: column; height: 100vh; }
+
+        /* Album header */
+        #album-header {
+            flex-shrink: 0;
+            padding: 0.75rem 1.5rem;
+            background: #0d0d1a;
+            border-bottom: 1px solid #1a1a2e;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            z-index: 5;
+        }
+        #album-header .album-text { min-width: 0; }
+        #album-header h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #album-header .artist {
+            margin: 0.15rem 0 0;
+            font-size: 0.85rem;
+            color: #888;
+        }
+        #album-header .description {
+            margin: 0.15rem 0 0;
+            font-size: 0.75rem;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Canvas container */
+        #canvas-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0a0a14;
+            overflow: hidden;
+            position: relative;
+        }
+        canvas { display: block; max-width: 100%; max-height: 100%; }
+
+        /* Track info foldout */
+        #track-info {
+            flex-shrink: 0;
+            background: #111122;
+            border-top: 1px solid #1a1a2e;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        #track-info.open { max-height: 200px; }
+        #track-info-inner {
+            padding: 0.75rem 1.5rem;
+        }
+        #track-info .track-title {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        #track-info .track-artist {
+            margin: 0.2rem 0 0;
+            font-size: 0.85rem;
+            color: #888;
+        }
+        #track-info .track-description {
+            margin: 0.5rem 0 0;
+            font-size: 0.8rem;
+            color: #aaa;
+            line-height: 1.4;
+        }
+        #track-info .track-links {
+            margin: 0.5rem 0 0;
+            padding: 0;
+            list-style: none;
+            display: flex;
+            gap: 1rem;
+            font-size: 0.8rem;
+        }
+        #track-info .track-links a {
+            color: #6688cc;
+            text-decoration: none;
+        }
+        #track-info .track-links a:hover { text-decoration: underline; }
+        #track-info .close-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        #track-info .close-btn:hover { color: #aaa; }
+
+        /* Hidden container for track metadata injected by WASM */
+        #track-data { display: none; }
+
+        /* Click-to-start overlay */
         #overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.85);
             display: flex; flex-direction: column; align-items: center;
-            justify-content: center; color: white; font-family: sans-serif;
+            justify-content: center; color: white;
             cursor: pointer; z-index: 10;
         }
-        #overlay h1 { margin-bottom: 0.25em; }
-        #overlay .artist { color: #aaa; margin-bottom: 1.5em; }
+        #overlay h1 { margin-bottom: 0.25em; font-size: 2rem; }
+        #overlay .artist { color: #aaa; margin-bottom: 1.5em; font-size: 1.1rem; }
         #overlay .start-hint { color: #888; font-size: 0.9em; }
     </style>
 </head>
 <body>
-    <canvas id="game-canvas"></canvas>
+    <div id="page">
+        <header id="album-header" style="display: none;">
+            <div class="album-text">
+                <h1 id="header-title"></h1>
+                <p id="header-artist" class="artist"></p>
+                <p id="header-description" class="description"></p>
+            </div>
+        </header>
+
+        <div id="canvas-container">
+            <canvas id="game-canvas"></canvas>
+        </div>
+
+        <div id="track-info">
+            <div id="track-info-inner" style="position: relative;">
+                <button class="close-btn" id="track-info-close">&times;</button>
+                <h3 class="track-title" id="track-info-title"></h3>
+                <p class="track-artist" id="track-info-artist"></p>
+                <p class="track-description" id="track-info-description"></p>
+                <ul class="track-links" id="track-info-links"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Track metadata injected by WASM at startup -->
+    <div id="track-data"></div>
+
     <div id="overlay">
         <h1 id="album-title">Loading...</h1>
         <p id="album-artist" class="artist"></p>
         <p class="start-hint">Click anywhere to start</p>
     </div>
+
+    <script>
+        // Track info foldout logic
+        (function() {
+            var currentTrackId = null;
+            var panel = document.getElementById('track-info');
+            var closeBtn = document.getElementById('track-info-close');
+
+            function findTrackData(trackId) {
+                var el = document.querySelector('#track-data [data-track-id="' + trackId + '"]');
+                if (!el) return null;
+                return {
+                    title: el.getAttribute('data-title') || '',
+                    artist: el.getAttribute('data-artist') || '',
+                    description: el.getAttribute('data-description') || '',
+                    lyrics: el.getAttribute('data-lyrics') || '',
+                    links: el.getAttribute('data-links') || ''
+                };
+            }
+
+            function showTrack(trackId) {
+                var data = findTrackData(trackId);
+                if (!data) return;
+
+                document.getElementById('track-info-title').textContent = data.title;
+                document.getElementById('track-info-artist').textContent = data.artist;
+
+                var descEl = document.getElementById('track-info-description');
+                descEl.textContent = data.description;
+                descEl.style.display = data.description ? '' : 'none';
+
+                var linksEl = document.getElementById('track-info-links');
+                linksEl.innerHTML = '';
+                if (data.links) {
+                    try {
+                        JSON.parse(data.links).forEach(function(pair) {
+                            if (!Array.isArray(pair) || pair.length < 2) return;
+                            var url = pair[1];
+                            if (!/^https?:\/\//i.test(url)) return;
+                            var li = document.createElement('li');
+                            var a = document.createElement('a');
+                            a.textContent = pair[0];
+                            a.href = url;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            li.appendChild(a);
+                            linksEl.appendChild(li);
+                        });
+                    } catch (e) { /* ignore malformed JSON */ }
+                }
+                linksEl.style.display = linksEl.children.length ? '' : 'none';
+
+                currentTrackId = trackId;
+                panel.classList.add('open');
+            }
+
+            function hideTrack() {
+                panel.classList.remove('open');
+                currentTrackId = null;
+            }
+
+            document.addEventListener('track-select', function(e) {
+                var trackId = String(e.detail);
+                if (currentTrackId === trackId) {
+                    hideTrack();
+                } else {
+                    showTrack(trackId);
+                }
+            });
+
+            closeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                hideTrack();
+            });
+        })();
+    </script>
 </body>
 </html>

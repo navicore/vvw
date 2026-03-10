@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlAudioElement;
 
 use vvw_game::{
-    Maze, SpatialAudioSet, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
+    Maze, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
     spawn_maze_tiles,
 };
 
@@ -81,7 +81,10 @@ async fn run() -> Result<(), JsValue> {
     let elements_for_click = engine.audio_elements();
     setup_overlay_click(ctx_for_click, elements_for_click)?;
 
-    // 5. Create and run Bevy app
+    // 5. Inject track metadata into DOM for the foldout
+    ui::inject_track_metadata(&loaded.manifest.tracks);
+
+    // 6. Create and run Bevy app
     let maze = loaded.manifest.maze;
     let lighting = loaded.manifest.lighting;
 
@@ -102,7 +105,13 @@ async fn run() -> Result<(), JsValue> {
         }))
         .add_plugins(VvwGamePlugin)
         .add_systems(Startup, setup_web_maze)
-        .add_systems(Update, web_audio_sync.after(SpatialAudioSet))
+        .add_systems(
+            Update,
+            (
+                web_audio_sync.after(SpatialAudioSet),
+                handle_track_clicks.after(SpatialAudioSet),
+            ),
+        )
         .run();
 
     Ok(())
@@ -126,6 +135,50 @@ fn web_audio_sync(
     for (track_icon, state) in &track_query {
         engine.set_volume(track_icon.track_id, state.current_gain);
         engine.set_panning(track_icon.track_id, state.current_pan);
+    }
+}
+
+/// Detect mouse clicks on the canvas and show info for the nearest audible track.
+#[allow(clippy::needless_pass_by_value)]
+fn handle_track_clicks(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<vvw_game::GameCamera>>,
+    track_query: Query<(&TrackIcon, &GlobalTransform, &TrackAudioState)>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let Some(cursor_pos) = window.cursor_position() else {
+        return;
+    };
+    let Ok((camera, camera_transform)) = camera_query.single() else {
+        return;
+    };
+    let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) else {
+        return;
+    };
+
+    // Find the nearest audible track icon within click range
+    let click_radius = TILE_SIZE * 1.5;
+    let mut best: Option<(usize, f32)> = None;
+
+    for (icon, global_transform, state) in &track_query {
+        if state.current_gain < 0.01 {
+            continue; // Skip inaudible tracks
+        }
+        let dist = world_pos.distance(global_transform.translation().truncate());
+        if dist < click_radius && (best.is_none() || dist < best.unwrap().1) {
+            best = Some((icon.track_id, dist));
+        }
+    }
+
+    if let Some((track_id, _)) = best {
+        ui::dispatch_track_select(track_id);
     }
 }
 
@@ -166,8 +219,9 @@ fn setup_overlay_click(
             }
         }
 
-        // Hide the overlay
+        // Hide the overlay, show the header
         let _ = ui::hide_overlay();
+        ui::show_header();
     });
 
     overlay.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
