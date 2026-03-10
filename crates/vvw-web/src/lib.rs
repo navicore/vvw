@@ -119,8 +119,12 @@ async fn run() -> Result<(), JsValue> {
 
 /// Spawn maze tiles from the pre-loaded `Maze` resource.
 #[allow(clippy::needless_pass_by_value)]
-fn setup_web_maze(mut commands: Commands, maze: Res<Maze>) {
-    spawn_maze_tiles(&mut commands, &maze);
+fn setup_web_maze(
+    mut commands: Commands,
+    maze: Res<Maze>,
+    lighting: Res<vvw_light::LightingConfig>,
+) {
+    spawn_maze_tiles(&mut commands, &maze, &lighting);
 }
 
 /// Sync spatial audio state to the Web Audio API engine each frame.

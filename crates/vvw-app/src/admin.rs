@@ -129,7 +129,7 @@ fn admin_setup_maze(mut commands: Commands, startup_project: Option<Res<StartupP
         match project::load_project(&path) {
             Ok((manifest, audio_bytes)) => {
                 tracing::info!("Loading project '{}' from {}", name, path.display());
-                spawn_maze_tiles(&mut commands, &manifest.maze);
+                spawn_maze_tiles(&mut commands, &manifest.maze, &manifest.lighting);
 
                 // Set track counter to max id + 1
                 let next_id = manifest
@@ -176,7 +176,7 @@ fn admin_setup_maze(mut commands: Commands, startup_project: Option<Res<StartupP
     // Default: generate fresh maze
     let config = MazeGenConfig::default();
     let (maze, state) = generate_initial_maze(&config);
-    spawn_maze_tiles(&mut commands, &maze);
+    spawn_maze_tiles(&mut commands, &maze, &LightingConfig::default());
     commands.insert_resource(maze);
     commands.insert_resource(state);
 }

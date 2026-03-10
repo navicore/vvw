@@ -29,7 +29,7 @@ impl Default for PlayerMovement {
     fn default() -> Self {
         Self {
             tile_pos: TilePos::new(0, 0),
-            speed: 1000.0, // Force units; terminal velocity ≈ force / damping
+            speed: 600.0, // Force units; terminal velocity ≈ speed / damping
         }
     }
 }
@@ -106,9 +106,9 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
             // Physics components
             RigidBody::Dynamic,
             Collider::rectangle(player_size, player_size),
-            Friction::new(0.7),
-            Restitution::new(0.3),
-            LinearDamping(5.0),
+            Friction::new(0.5),
+            Restitution::new(0.5),
+            LinearDamping(3.0),
             AngularDamping(5.0),
         ))
         .with_child((

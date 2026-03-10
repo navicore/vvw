@@ -6,7 +6,7 @@
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
-use vvw_light::{LightOccluder2d, LightOccluderGrid, PointLight2d};
+use vvw_light::{LightOccluder2d, LightOccluderGrid, LightingConfig, PointLight2d};
 
 pub use vvw_core::maze::Maze;
 
@@ -59,7 +59,7 @@ pub mod colors {
 /// Spawn all tile sprites for the current maze state.
 ///
 /// Call this from your platform's startup system after inserting the `Maze` resource.
-pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
+pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze, lighting: &LightingConfig) {
     for y in 0..maze.height {
         for x in 0..maze.width {
             let tile = maze.get(x, y).unwrap_or_default();
@@ -96,19 +96,19 @@ pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
 
             if tile == TileKind::TrackIcon {
                 let track_id = maze.track_ids.get(&(x, y)).copied().unwrap_or(0);
-                commands
-                    .spawn((
-                        Sprite {
-                            color: colors::TRACK_ICON,
-                            custom_size: Some(Vec2::splat(TILE_SIZE * 0.6)),
-                            ..default()
-                        },
-                        Transform::from_xyz(world_pos.x, world_pos.y, 1.0),
-                        TrackIcon { track_id },
-                        pos,
-                        TrackAudioState::default(),
-                    ))
-                    .with_child((
+                let mut icon = commands.spawn((
+                    Sprite {
+                        color: colors::TRACK_ICON,
+                        custom_size: Some(Vec2::splat(TILE_SIZE * 0.6)),
+                        ..default()
+                    },
+                    Transform::from_xyz(world_pos.x, world_pos.y, 1.0),
+                    TrackIcon { track_id },
+                    pos,
+                    TrackAudioState::default(),
+                ));
+                if lighting.track_lights_enabled {
+                    icon.with_child((
                         PointLight2d {
                             color: Color::srgb(0.8, 0.4, 0.2), // Orange glow
                             intensity: 0.4,
@@ -117,6 +117,7 @@ pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze) {
                         },
                         TrackLight,
                     ));
+                }
             }
         }
     }
@@ -147,6 +148,7 @@ fn respawn_maze_tiles(
     tile_query: Query<Entity, With<MazeTile>>,
     icon_query: Query<Entity, With<TrackIcon>>,
     maze: Res<Maze>,
+    lighting: Res<LightingConfig>,
 ) {
     // Only process if there are MazeChanged events
     let mut changed = false;
@@ -166,5 +168,5 @@ fn respawn_maze_tiles(
     }
 
     // Spawn fresh tiles from current maze
-    spawn_maze_tiles(&mut commands, &maze);
+    spawn_maze_tiles(&mut commands, &maze, &lighting);
 }
