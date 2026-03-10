@@ -159,6 +159,16 @@ deploy-album ALBUM:
 clean-album ALBUM OUTPUT="deploy":
     cargo run -p vvw-deploy --release -- clean {{ALBUM}} --output {{OUTPUT}}
 
+# Delete an album everywhere: local deploy dir, R2 audio, then redeploy Pages
+delete-album ALBUM OUTPUT="deploy":
+    cargo run -p vvw-deploy --release -- clean {{ALBUM}} --output {{OUTPUT}}
+    cargo run -p vvw-deploy --release -- delete-audio {{ALBUM}}
+    just deploy-pages
+
+# Delete audio files from R2 only
+delete-audio ALBUM:
+    cargo run -p vvw-deploy --release -- delete-audio {{ALBUM}}
+
 # --- Misc ---
 
 # Check for outdated dependencies

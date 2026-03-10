@@ -123,6 +123,16 @@ enum Commands {
         #[arg(long, short, default_value = "deploy")]
         output: PathBuf,
     },
+
+    /// Delete an album's audio files from Cloudflare R2
+    DeleteAudio {
+        /// Album name whose audio to delete
+        album: String,
+
+        /// R2 bucket name
+        #[arg(long, default_value = "vvw-audio")]
+        bucket: String,
+    },
 }
 
 /// Returns the base directory where all projects are stored.
@@ -261,6 +271,51 @@ fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
     Ok(())
 }
 
+/// Delete a single object from R2 via wrangler.
+fn r2_delete(bucket: &str, key: &str) -> Result<()> {
+    let status = std::process::Command::new("wrangler")
+        .args([
+            "r2",
+            "object",
+            "delete",
+            &format!("{bucket}/{key}"),
+            "--remote",
+        ])
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("wrangler r2 object delete failed for {key}");
+    }
+    Ok(())
+}
+
+/// Delete an album's audio files from R2 by reading the local project to discover keys.
+fn cmd_delete_r2_audio(album: &str, bucket: &str) -> Result<()> {
+    let src = project_dir(album);
+    let audio_dir = src.join("audio");
+    anyhow::ensure!(
+        audio_dir.exists(),
+        "No local audio directory for '{}' at {} — cannot determine R2 keys to delete",
+        album,
+        audio_dir.display()
+    );
+
+    let mut count = 0;
+    for entry in std::fs::read_dir(&audio_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let filename = entry.file_name();
+        let key = format!("{album}/audio/{}", filename.to_string_lossy());
+        print!("  Deleting {key}...");
+        r2_delete(bucket, &key)?;
+        println!(" ok");
+        count += 1;
+    }
+    println!("Deleted {count} audio file(s) from R2 bucket '{bucket}'");
+    Ok(())
+}
+
 fn cmd_wrangler(args: &[&str], label: &str) -> Result<()> {
     let status = std::process::Command::new("wrangler").args(args).status()?;
     if !status.success() {
@@ -387,6 +442,10 @@ fn main() -> Result<()> {
             } else {
                 println!("Album directory not found: {}", album_dir.display());
             }
+        }
+
+        Commands::DeleteAudio { album, bucket } => {
+            cmd_delete_r2_audio(&album, &bucket)?;
         }
     }
 
