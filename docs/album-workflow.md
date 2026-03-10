@@ -4,25 +4,28 @@ How to create and deploy an album to the web player.
 
 ## Prerequisites
 
-- Desktop app built: `cargo build --release`
 - Trunk installed: `cargo binstall trunk`
 - Wrangler authenticated: `wrangler login`
 - Audio files converted to FLAC (or wav/mp3/ogg)
 
-## 1. Create an Album (Desktop App)
+## 1. Create an Album (CLI)
 
 ```sh
-just run
+just create-album ./audio-files/
 ```
 
-- Drag audio files onto the window to add tracks
-- Each track gets a room in the procedurally generated maze
-- Use the settings panel to:
-  - Set album title and artist
-  - Edit per-track title/artist metadata
-  - Adjust maze generation parameters (room size, corridor length)
-  - Tune lighting (ambient, player lantern, track lights)
-- Enter a project name and click **Save**
+This scans the directory for audio files and opens your `$EDITOR` with a pre-populated metadata template (like `git commit`). Fill in the required fields:
+
+- **Album**: title, artist, description
+- **Per-track**: title, artist
+
+Save and quit. The CLI validates metadata, generates a maze, copies audio files, and writes `project.ron`.
+
+For scripted/CI use, skip the editor with a metadata file:
+
+```sh
+just create-album --metadata metadata.ron ./audio-files/
+```
 
 ## 2. Verify the Project
 
@@ -94,7 +97,8 @@ just deploy-pages
 
 | Command | Description |
 |---------|-------------|
-| `just list-projects` | List saved desktop projects |
+| `just create-album DIR` | Create album from audio directory (opens editor) |
+| `just list-projects` | List saved projects |
 | `just deploy-album ALBUM` | Full deploy: R2 upload + assemble + Pages deploy |
 | `just assemble-local ALBUM` | Assemble with audio for local testing |
 | `just preview` | Local dev server (run assemble-local first) |

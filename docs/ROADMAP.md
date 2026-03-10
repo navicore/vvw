@@ -2,15 +2,19 @@
 
 ## Current State
 
-The web player is deployed and functional on Cloudflare Pages. Albums are created via the desktop app (`vvw-app`), then deployed with `just deploy-album`. Audio streams from Cloudflare R2. The WASM binary is size-optimized to stay under Cloudflare's 25 MiB limit.
+The web player is deployed and functional on Cloudflare Pages. Albums are created via the CLI (`vvw-deploy create`) with an interactive `$EDITOR` workflow for metadata. Audio streams from Cloudflare R2. The WASM binary is size-optimized to stay under Cloudflare's 25 MiB limit.
 
-22 tests pass. CI runs on Linux via `just ci`.
+24 tests pass. CI runs on Linux via `just ci`.
 
 ## In Progress
 
-### Remove Desktop App (planned)
-Replace `vvw-app` (Bevy GUI) and `vvw-audio` (kira) with a CLI subcommand `vvw-deploy create`. See `docs/remove-desktop-plan.md` for the full plan. Key steps:
-- Add `Create` subcommand to `vvw-deploy` (scan audio dir, require metadata RON, generate maze, write `project.ron`)
+### Remove Desktop App
+Replace `vvw-app` (Bevy GUI) and `vvw-audio` (kira) with CLI-only workflow. See `docs/remove-desktop-plan.md` for the full plan.
+
+Completed:
+- ~~Add `Create` subcommand to `vvw-deploy`~~ (done — editor workflow, metadata validation, maze gen)
+
+Remaining:
 - Strip `TrackHandles` from `vvw-game` (simplify to state-only audio bridge)
 - Delete `vvw-app` and `vvw-audio` crates
 - Clean up workspace config and CI

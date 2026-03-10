@@ -143,7 +143,7 @@ any missing fields.
 
 ## Migration Steps
 
-1. **Add `Create` subcommand to `vvw-deploy`** — implement album creation CLI
+1. ~~**Add `Create` subcommand to `vvw-deploy`**~~ — done (editor workflow, metadata validation, filename escaping, path sanitization)
 2. **Test**: create an album via CLI, deploy it, verify it plays identically
 3. **Strip `TrackHandles` from `vvw-game`** — simplify audio to state-only
 4. **Delete `vvw-app`** and `vvw-audio`

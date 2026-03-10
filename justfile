@@ -76,6 +76,12 @@ clean:
     cargo clean
     @echo "Clean complete."
 
+# --- Album Creation ---
+
+# Create a new album from a directory of audio files (opens $EDITOR for metadata)
+create-album *ARGS:
+    cargo run -p vvw-deploy --release -- create {{ARGS}}
+
 # --- WASM / Web ---
 
 # Find wasm-opt: prefer PATH, fall back to trunk's cached copy

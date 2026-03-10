@@ -2,7 +2,7 @@
 
 ## Context & Scope
 
-VVW is a spatial audio exploration game. Players navigate a 2D maze; audio tracks placed in rooms fade in/out based on line-of-sight and distance. The game runs as a WASM web app on Cloudflare Pages. Audio streams from Cloudflare R2. Albums are authored on the desktop app (to be replaced by a CLI tool — see `remove-desktop-plan.md`).
+VVW is a spatial audio exploration game. Players navigate a 2D maze; audio tracks placed in rooms fade in/out based on line-of-sight and distance. The game runs as a WASM web app on Cloudflare Pages. Audio streams from Cloudflare R2. Albums are authored via the CLI (`vvw-deploy create`). The desktop app (`vvw-app`) is being removed — see `remove-desktop-plan.md`.
 
 External boundaries:
 - **Cloudflare Pages** — hosts the WASM player, per-album `index.html`, `project.ron` manifests, and `_config.json`
@@ -53,8 +53,8 @@ vvw-app           Desktop admin app (binary) — BEING REMOVED
 vvw-audio         Kira audio wrapper (desktop) — BEING REMOVED
   GameAudioManager, GameTrack (StaticSoundHandle)
 
-vvw-deploy        CLI tool for assembly and deployment
-  create          (planned) Album creation from audio directory
+vvw-deploy        CLI tool for album creation, assembly, and deployment
+  create          Album creation: scan audio, $EDITOR metadata, maze gen
   assemble        Copy trunk dist + manifests into deploy dir
   upload-audio    Push audio files to R2 via wrangler
   deploy          wrangler pages deploy
@@ -80,6 +80,6 @@ vvw-deploy        CLI tool for assembly and deployment
 
 **Linting:** Clippy pedantic + nursery + cargo as warnings. Selective allows for game-domain patterns (float_cmp, cast_precision_loss, module_name_repetitions).
 
-**Testing:** Unit tests inline (`#[cfg(test)]`). 22 tests across workspace. WASM tests via `wasm-pack test --node`. CI runs `just ci` (format check, clippy, tests, build).
+**Testing:** Unit tests inline (`#[cfg(test)]`). 24 tests across workspace. WASM tests via `wasm-pack test --node`. CI runs `just ci` (format check, clippy, tests, build).
 
 **Build:** Justfile is the single source of truth. CI/CD workflows only call `just` recipes.
