@@ -162,24 +162,6 @@
     </div>
 
     <script>
-        // Safari detection — show unsupported message instead of loading the player
-        (function() {
-            var ua = navigator.userAgent;
-            if (/Safari/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua)) {
-                document.getElementById('overlay').innerHTML =
-                    '<h1>Safari Audio: It\'s Complicated</h1>' +
-                    '<p style="color:#aaa;max-width:28em;text-align:center;line-height:1.5">' +
-                    'Safari and Web Audio have a storied history of not getting along. ' +
-                    'We\'re working on it. In the meantime, please use Firefox or Chrome.</p>' +
-                    '<p style="color:#555;font-size:0.8em;margin-top:1.5em">' +
-                    'Write your congressman.</p>';
-                document.getElementById('overlay').style.cursor = 'default';
-                throw new Error('Safari not supported — halting player load');
-            }
-        })();
-    </script>
-
-    <script>
         // Track info foldout logic
         (function() {
             var currentTrackId = null;
