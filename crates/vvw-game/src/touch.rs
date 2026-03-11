@@ -4,7 +4,7 @@ use avian2d::prelude::*;
 use bevy::input::touch::Touches;
 use bevy::prelude::*;
 
-use crate::player::{Player, PlayerMovement};
+use crate::player::{Player, PlayerMovement, handle_player_input};
 
 /// Plugin for touch-based movement controls
 pub struct TouchControlsPlugin;
@@ -15,7 +15,12 @@ impl Plugin for TouchControlsPlugin {
             .add_systems(Startup, spawn_dpad_overlay)
             .add_systems(
                 Update,
-                (detect_touch_device, handle_touch_input, update_dpad_visuals).chain(),
+                (
+                    detect_touch_device,
+                    handle_touch_input.after(handle_player_input),
+                    update_dpad_visuals,
+                )
+                    .chain(),
             );
     }
 }
@@ -170,15 +175,16 @@ fn handle_touch_input(
         return;
     }
 
-    // Single-pointer: only one button can be Interaction::Pressed at a time,
-    // so only cardinal directions are possible (no diagonals).
     let mut direction = Vec2::ZERO;
 
     for (interaction, button) in &button_query {
         if *interaction == Interaction::Pressed {
-            direction = button.direction;
-            break;
+            direction += button.direction;
         }
+    }
+
+    if direction != Vec2::ZERO {
+        direction = direction.normalize();
     }
 
     let dt = time.delta_secs();

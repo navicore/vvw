@@ -125,7 +125,7 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>, physics: Res<PhysicsCon
 }
 
 #[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value
-fn handle_player_input(
+pub fn handle_player_input(
     time: Res<Time>,
     mut query: Query<
         (
