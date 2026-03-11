@@ -53,10 +53,18 @@ pub struct CreateOptions {
     pub audio_dir: PathBuf,
     pub metadata_file: Option<PathBuf>,
     pub name: Option<String>,
-    pub maze_config: MazeGenConfig,
+    /// Pre-populate the editor template with this artist name.
+    pub artist: Option<String>,
+    /// Pre-populate the editor template with this album title.
+    pub album_title: Option<String>,
+    /// Pre-populate the editor template with this album description.
+    pub description: Option<String>,
+    /// When `None`, maze config is auto-scaled based on the number of tracks.
+    pub maze_config: Option<MazeGenConfig>,
 }
 
 /// Run the create-album workflow.
+#[allow(clippy::too_many_lines)]
 pub fn create_album(opts: &CreateOptions) -> Result<()> {
     // 1. Scan audio files
     let audio_files = scan_audio_files(&opts.audio_dir)?;
@@ -69,11 +77,16 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
     }
     println!("Found {} audio file(s)", audio_files.len());
 
-    // 2. Get metadata — from file or via editor
+    // 2. Get metadata — from file or via editor (with optional pre-populated values)
     let metadata = if let Some(ref path) = opts.metadata_file {
         load_metadata_file(path)?
     } else {
-        edit_metadata(&audio_files)?
+        edit_metadata(
+            &audio_files,
+            opts.artist.as_deref(),
+            opts.album_title.as_deref(),
+            opts.description.as_deref(),
+        )?
     };
 
     // 3. Validate
@@ -100,8 +113,12 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
     std::fs::create_dir_all(&audio_out)
         .with_context(|| format!("creating project dir: {}", project_dir.display()))?;
 
-    // 6. Generate maze
-    let (mut maze, mut state) = generate_initial_maze(&opts.maze_config);
+    // 6. Generate maze (auto-scale config to track count when not overridden)
+    let maze_config = opts
+        .maze_config
+        .clone()
+        .unwrap_or_else(|| vvw_core::mazegen::config_for_track_count(audio_files.len()));
+    let (mut maze, mut state) = generate_initial_maze(&maze_config);
     for i in 0..audio_files.len() {
         grow_maze(&mut maze, &mut state, i);
     }
@@ -147,7 +164,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
     let manifest = ProjectManifest {
         maze,
         rooms: state.rooms,
-        maze_config: opts.maze_config.clone(),
+        maze_config,
         lighting: LightingConfig::default(),
         tracks,
         album: AlbumMetadata {
@@ -213,8 +230,13 @@ fn load_metadata_file(path: &Path) -> Result<InputMetadata> {
 }
 
 /// Generate a template, open it in `$EDITOR`, and parse the result.
-fn edit_metadata(audio_files: &[PathBuf]) -> Result<InputMetadata> {
-    let template = build_template(audio_files);
+fn edit_metadata(
+    audio_files: &[PathBuf],
+    artist: Option<&str>,
+    album_title: Option<&str>,
+    description: Option<&str>,
+) -> Result<InputMetadata> {
+    let template = build_template(audio_files, artist, album_title, description);
 
     // Write to a temp file
     let tmp_dir = std::env::temp_dir();
@@ -260,17 +282,40 @@ fn edit_metadata(audio_files: &[PathBuf]) -> Result<InputMetadata> {
 }
 
 /// Build the RON template string with comment hints.
-fn build_template(audio_files: &[PathBuf]) -> String {
+///
+/// When `artist` or `album_title` are provided, they pre-populate the template.
+/// Track titles default to the filename without its extension.
+fn build_template(
+    audio_files: &[PathBuf],
+    artist: Option<&str>,
+    album_title: Option<&str>,
+    description: Option<&str>,
+) -> String {
     use std::fmt::Write;
+
+    let artist_val = artist.unwrap_or_default();
+    let title_val = album_title.unwrap_or_default();
+    let default_desc;
+    let desc_val = match description {
+        Some(d) => d,
+        None if !title_val.is_empty() => {
+            default_desc = format!("{title_val} Album");
+            &default_desc
+        }
+        None => "",
+    };
+    let escaped_artist = artist_val.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped_title = title_val.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped_desc = desc_val.replace('\\', "\\\\").replace('"', "\\\"");
 
     let mut s = String::new();
     s.push_str("// Album metadata — fill in the required fields, then save and quit.\n");
     s.push_str("// Lines starting with // are stripped before parsing.\n");
     s.push_str("(\n");
     s.push_str("    album: (\n");
-    s.push_str("        title: \"\",        // REQUIRED\n");
-    s.push_str("        artist: \"\",       // REQUIRED\n");
-    s.push_str("        description: \"\",  // REQUIRED\n");
+    let _ = writeln!(s, "        title: \"{escaped_title}\",        // REQUIRED");
+    let _ = writeln!(s, "        artist: \"{escaped_artist}\",       // REQUIRED");
+    let _ = writeln!(s, "        description: \"{escaped_desc}\",  // REQUIRED");
     s.push_str("        // cover_art_url: None,\n");
     s.push_str("        // release_date: None,\n");
     s.push_str("        // links: [],\n");
@@ -280,10 +325,12 @@ fn build_template(audio_files: &[PathBuf]) -> String {
 
     for file in audio_files {
         let name = file.file_name().unwrap_or_default().to_string_lossy();
-        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_name = name.replace('\\', "\\\\").replace('"', "\\\"");
+        let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+        let escaped_stem = stem.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(
             s,
-            "        ( filename: \"{escaped}\", title: \"\", artist: \"\" ),"
+            "        ( filename: \"{escaped_name}\", title: \"{escaped_stem}\", artist: \"{escaped_artist}\" ),"
         );
     }
 
@@ -381,10 +428,21 @@ mod tests {
             PathBuf::from("/tmp/01 First.flac"),
             PathBuf::from("/tmp/02 Second.flac"),
         ];
-        let template = build_template(&files);
+        let template = build_template(
+            &files,
+            Some("Test Artist"),
+            Some("Test Album"),
+            Some("A great album"),
+        );
         assert!(template.contains("01 First.flac"));
         assert!(template.contains("02 Second.flac"));
         assert!(template.contains("REQUIRED"));
+        // Pre-populated values
+        assert!(template.contains("Test Artist"));
+        assert!(template.contains("Test Album"));
+        // Track titles from filename stems
+        assert!(template.contains("01 First"));
+        assert!(template.contains("02 Second"));
     }
 
     #[test]

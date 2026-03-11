@@ -114,6 +114,16 @@ impl Maze {
         }
     }
 
+    /// Ensure `PlayerStart` exists. If it was overwritten by carving, re-stamp it
+    /// at the center of the given start room.
+    pub fn restore_player_start(&mut self, start_room: &crate::mazegen::Room) {
+        if self.find_player_start().is_some() {
+            return;
+        }
+        let center = start_room.center();
+        self.set(center.x as usize, center.y as usize, TileKind::PlayerStart);
+    }
+
     /// Check if a tile position is walkable
     pub fn is_walkable(&self, pos: &TilePos) -> bool {
         self.get_tile(pos).is_some_and(|tile| !tile.is_solid())

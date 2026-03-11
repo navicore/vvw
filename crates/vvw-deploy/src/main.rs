@@ -85,6 +85,7 @@ enum Commands {
     /// Create a new album from a directory of audio files.
     /// Opens $EDITOR with a metadata template (like `git commit`).
     /// Use --metadata to skip the editor and load from a file instead.
+    /// Use --artist + --album-name to skip the editor with filename-based track titles.
     Create {
         /// Directory containing audio files (wav/mp3/ogg/flac)
         audio_dir: PathBuf,
@@ -93,25 +94,37 @@ enum Commands {
         #[arg(long)]
         metadata: Option<PathBuf>,
 
+        /// Artist name — when combined with --album-name, skips the editor
+        #[arg(long)]
+        artist: Option<String>,
+
+        /// Album title — when combined with --artist, skips the editor
+        #[arg(long)]
+        album_name: Option<String>,
+
+        /// Album description
+        #[arg(long)]
+        description: Option<String>,
+
         /// Project name (default: derived from album title)
         #[arg(long)]
         name: Option<String>,
 
-        /// Minimum room size for maze generation
-        #[arg(long, default_value = "3")]
-        room_size_min: usize,
+        /// Minimum room size for maze generation (auto-scaled if omitted)
+        #[arg(long)]
+        room_size_min: Option<usize>,
 
-        /// Maximum room size for maze generation
-        #[arg(long, default_value = "7")]
-        room_size_max: usize,
+        /// Maximum room size for maze generation (auto-scaled if omitted)
+        #[arg(long)]
+        room_size_max: Option<usize>,
 
-        /// Minimum corridor length for maze generation
-        #[arg(long, default_value = "4")]
-        corridor_length_min: usize,
+        /// Minimum corridor length for maze generation (auto-scaled if omitted)
+        #[arg(long)]
+        corridor_length_min: Option<usize>,
 
-        /// Maximum corridor length for maze generation
-        #[arg(long, default_value = "8")]
-        corridor_length_max: usize,
+        /// Maximum corridor length for maze generation (auto-scaled if omitted)
+        #[arg(long)]
+        corridor_length_max: Option<usize>,
     },
 
     /// Remove an album's subdirectory from the deploy directory
@@ -405,30 +418,50 @@ fn main() -> Result<()> {
         Commands::Create {
             audio_dir,
             metadata,
+            artist,
+            album_name,
+            description,
             name,
             room_size_min,
             room_size_max,
             corridor_length_min,
             corridor_length_max,
         } => {
-            anyhow::ensure!(
-                room_size_min <= room_size_max,
-                "--room-size-min ({room_size_min}) must be <= --room-size-max ({room_size_max})"
-            );
-            anyhow::ensure!(
-                corridor_length_min <= corridor_length_max,
-                "--corridor-length-min ({corridor_length_min}) must be <= --corridor-length-max ({corridor_length_max})"
-            );
-            let maze_config = vvw_core::mazegen::MazeGenConfig {
-                min_room_size: room_size_min,
-                max_room_size: room_size_max,
-                min_corridor_length: corridor_length_min,
-                max_corridor_length: corridor_length_max,
-                ..Default::default()
+            // Only build explicit config if any maze args were provided;
+            // otherwise let create_album auto-scale based on track count.
+            let maze_config = if room_size_min.is_some()
+                || room_size_max.is_some()
+                || corridor_length_min.is_some()
+                || corridor_length_max.is_some()
+            {
+                let r_min = room_size_min.unwrap_or(3);
+                let r_max = room_size_max.unwrap_or(7);
+                let c_min = corridor_length_min.unwrap_or(4);
+                let c_max = corridor_length_max.unwrap_or(8);
+                anyhow::ensure!(
+                    r_min <= r_max,
+                    "--room-size-min ({r_min}) must be <= --room-size-max ({r_max})"
+                );
+                anyhow::ensure!(
+                    c_min <= c_max,
+                    "--corridor-length-min ({c_min}) must be <= --corridor-length-max ({c_max})"
+                );
+                Some(vvw_core::mazegen::MazeGenConfig {
+                    min_room_size: r_min,
+                    max_room_size: r_max,
+                    min_corridor_length: c_min,
+                    max_corridor_length: c_max,
+                    ..Default::default()
+                })
+            } else {
+                None
             };
             create::create_album(&create::CreateOptions {
                 audio_dir,
                 metadata_file: metadata,
+                artist,
+                album_title: album_name,
+                description,
                 name,
                 maze_config,
             })?;
