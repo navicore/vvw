@@ -38,7 +38,9 @@ struct DPadButton {
 
 const DPAD_SIZE: f32 = 150.0;
 const BUTTON_SIZE: f32 = 48.0;
-const DPAD_MARGIN: f32 = 20.0;
+const DPAD_MARGIN_LEFT: f32 = 20.0;
+/// Extra bottom margin to clear phone browser navigation/gesture bars
+const DPAD_MARGIN_BOTTOM: f32 = 80.0;
 const DPAD_ALPHA: f32 = 0.25;
 const DPAD_PRESSED_ALPHA: f32 = 0.5;
 
@@ -48,8 +50,8 @@ fn spawn_dpad_overlay(mut commands: Commands) {
             DPadOverlay,
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(DPAD_MARGIN),
-                bottom: Val::Px(DPAD_MARGIN),
+                left: Val::Px(DPAD_MARGIN_LEFT),
+                bottom: Val::Px(DPAD_MARGIN_BOTTOM),
                 width: Val::Px(DPAD_SIZE),
                 height: Val::Px(DPAD_SIZE),
                 ..default()
@@ -160,13 +162,20 @@ fn detect_touch_device(
     }
 }
 
-/// Read D-pad button interactions and apply velocity to the player
+/// Read D-pad button interactions and apply velocity to the player.
+/// Gated on `touch_detected` so mouse clicks on D-pad buttons don't
+/// double-apply velocity alongside keyboard input on desktop.
 #[allow(clippy::needless_pass_by_value)]
 fn handle_touch_input(
     time: Res<Time>,
+    state: Res<TouchState>,
     button_query: Query<(&Interaction, &DPadButton)>,
     mut player_query: Query<(&PlayerMovement, &mut LinearVelocity), With<Player>>,
 ) {
+    if !state.touch_detected {
+        return;
+    }
+
     let mut direction = Vec2::ZERO;
 
     for (interaction, button) in &button_query {
