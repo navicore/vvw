@@ -23,6 +23,12 @@ pub fn assemble(
         dist.display()
     );
 
+    // Wipe the output directory to prevent stale files from previous
+    // builds or preview/remote mode switches from interfering.
+    if output.exists() {
+        std::fs::remove_dir_all(output)
+            .with_context(|| format!("Failed to clean output dir {}", output.display()))?;
+    }
     std::fs::create_dir_all(output)?;
 
     // Copy index.html
@@ -64,37 +70,27 @@ pub fn assemble(
         std::fs::copy(dist.join("index.html"), album_out.join("index.html"))
             .with_context(|| format!("Failed to copy index.html for '{album}'"))?;
 
-        let audio_dst = album_out.join("audio");
         if audio_base_url.is_none() {
             // Local preview: copy audio files into deploy dir
             let audio_src = src.join("audio");
             if audio_src.exists() {
+                let audio_dst = album_out.join("audio");
                 std::fs::create_dir_all(&audio_dst)?;
                 copy_dir_contents(&audio_src, &audio_dst)
                     .with_context(|| format!("Failed to copy audio for '{album}'"))?;
             }
-        } else if audio_dst.exists() {
-            // R2 mode: remove any leftover local audio copies
-            std::fs::remove_dir_all(&audio_dst)
-                .with_context(|| format!("Failed to remove stale local audio for '{album}'"))?;
         }
 
         println!("  + {album}");
     }
 
-    // Write _config.json with R2 audio URL, or remove stale one for local preview
+    // Write _config.json with R2 audio URL (only for remote deploy)
     if let Some(url) = audio_base_url {
         let config = format!("{{\"audio_base_url\":\"{url}\"}}");
         std::fs::write(output.join("_config.json"), config)
             .context("Failed to write _config.json")?;
         println!("  Audio URL: {url}");
-    } else {
-        // Remove any leftover _config.json so the player uses local audio
-        let _ = std::fs::remove_file(output.join("_config.json"));
     }
-
-    // Remove _redirects if it exists from a previous assemble
-    let _ = std::fs::remove_file(output.join("_redirects"));
 
     // Write Cloudflare Pages _headers to set correct MIME types
     std::fs::write(

@@ -128,13 +128,11 @@ list-projects:
 # Assemble web player + album for local preview (includes audio files)
 assemble-local ALBUM OUTPUT="deploy":
     just build-web
-    rm -f {{OUTPUT}}/*.js {{OUTPUT}}/*.wasm
     cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}}
 
 # Assemble web player + album for Cloudflare (audio served from R2)
 assemble ALBUM OUTPUT="deploy":
     just build-web
-    rm -f {{OUTPUT}}/*.js {{OUTPUT}}/*.wasm
     cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}} --audio-base-url {{R2_URL}}
 
 # Upload audio files to R2
