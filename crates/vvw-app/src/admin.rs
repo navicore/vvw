@@ -166,6 +166,7 @@ fn admin_setup_maze(mut commands: Commands, startup_project: Option<Res<StartupP
                     config: manifest.maze_config,
                 };
                 commands.insert_resource(manifest.lighting);
+                commands.insert_resource(manifest.physics);
                 commands.insert_resource(AlbumMetadataResource(manifest.album));
                 commands.insert_resource(manifest.maze);
                 commands.insert_resource(state);
@@ -187,6 +188,7 @@ fn admin_setup_maze(mut commands: Commands, startup_project: Option<Res<StartupP
         &LightingConfig::default(),
         &vvw_core::physics::PhysicsConfig::default(),
     );
+    commands.insert_resource(vvw_core::physics::PhysicsConfig::default());
     commands.insert_resource(maze);
     commands.insert_resource(state);
 }
@@ -404,6 +406,7 @@ fn handle_project_save(
     maze: Res<Maze>,
     state: Res<MazeGenState>,
     lighting: Res<LightingConfig>,
+    physics: Res<vvw_core::physics::PhysicsConfig>,
     track_audio: Res<TrackAudioFiles>,
     album_meta: Res<AlbumMetadataResource>,
     mut project_list: ResMut<CachedProjectList>,
@@ -422,6 +425,7 @@ fn handle_project_save(
         &maze,
         &state,
         &lighting,
+        &physics,
         &track_audio.files,
         &album_meta.0,
     ) {
@@ -443,6 +447,7 @@ fn handle_project_load(
     mut maze: ResMut<Maze>,
     mut state: ResMut<MazeGenState>,
     mut lighting: ResMut<LightingConfig>,
+    mut physics: ResMut<vvw_core::physics::PhysicsConfig>,
     mut track_audio: ResMut<TrackAudioFiles>,
     mut album_meta: ResMut<AlbumMetadataResource>,
     mut maze_changed: MessageWriter<MazeChanged>,
@@ -476,13 +481,14 @@ fn handle_project_load(
     // Clear track audio files
     track_audio.files.clear();
 
-    // Replace maze, gen state, and lighting
+    // Replace maze, gen state, lighting, and physics
     *maze = manifest.maze;
     *state = MazeGenState {
         rooms: manifest.rooms,
         config: manifest.maze_config,
     };
     *lighting = manifest.lighting;
+    *physics = manifest.physics;
     *album_meta = AlbumMetadataResource(manifest.album.clone());
 
     // Set counter to max track_id + 1

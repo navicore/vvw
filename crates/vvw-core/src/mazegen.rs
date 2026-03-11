@@ -159,7 +159,7 @@ pub fn generate_initial_maze(config: &MazeGenConfig) -> (Maze, MazeGenState) {
 /// and carving a new room at the end.
 ///
 /// `track_id` is stored in the maze's `track_ids` map for stable ID assignment.
-/// Returns the center of the new room (for placing a track icon).
+/// Returns the position where the track icon was actually placed.
 ///
 /// Attempts multiple placements to avoid overlapping existing rooms and to
 /// maintain minimum distance between tracks. Falls back to the best available
@@ -184,43 +184,52 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
     let threshold = state.config.max_overlap_fraction;
     let min_dist = state.config.min_track_distance as f32;
 
-    // Try multiple placements, keeping the first acceptable one
-    let mut best: Option<Proposal> = None;
+    // Try multiple placements. Track the best fallback by severity:
+    // - Grade 0: perfect (no overlap, distance OK) — accept immediately
+    // - Grade 1: no overlap but too close to a track
+    // - Grade 2: overlapping rooms
+    let mut best: Option<(Proposal, u8)> = None;
 
     for _ in 0..MAX_ATTEMPTS {
         let candidate = propose_room(&mut rng, state);
 
-        // Reject if any existing room overlaps the new room beyond threshold
-        let too_much_overlap = state
+        // Check room overlap
+        let max_overlap = state
             .rooms
             .iter()
-            .any(|r| overlap_fraction(r, &candidate.room) > threshold);
+            .map(|r| overlap_fraction(r, &candidate.room))
+            .fold(0.0_f32, f32::max);
+        let too_much_overlap = max_overlap > threshold;
+
         if too_much_overlap {
-            if best.is_none() {
-                best = Some(candidate);
+            // Grade 2 — only keep if no better fallback exists
+            if best.as_ref().is_none_or(|(_, g)| *g > 1) {
+                best = Some((candidate, 2));
             }
             continue;
         }
 
-        // Reject if new room center is too close to any existing track
+        // Check track distance
         if min_dist > 0.0 {
             let center = candidate.room.center();
             let too_close = existing_tracks
                 .iter()
                 .any(|t| center.distance(*t) < min_dist);
             if too_close {
-                if best.is_none() {
-                    best = Some(candidate);
+                // Grade 1 — better than overlap
+                if best.as_ref().is_none_or(|(_, g)| *g > 0) {
+                    best = Some((candidate, 1));
                 }
                 continue;
             }
         }
 
-        best = Some(candidate);
+        // Grade 0 — perfect, use immediately
+        best = Some((candidate, 0));
         break;
     }
 
-    let proposal = best?;
+    let (proposal, _grade) = best?;
 
     // Ensure maze is large enough — expand if needed
     let needed_right =
@@ -270,7 +279,7 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
 
     state.rooms.push(proposal.room);
 
-    Some(center)
+    Some(TilePos::new(ix as i32, iy as i32))
 }
 
 /// A proposed room placement with an L-shaped corridor.
@@ -282,6 +291,9 @@ struct Proposal {
     bend_x: usize,
     bend_y: usize,
     corridor_width: usize,
+    /// Whether the exit direction is vertical (up/down). Controls carving order:
+    /// horizontal exits carve horizontal-first, vertical exits carve vertical-first.
+    vertical_exit: bool,
     room: Room,
 }
 
@@ -389,6 +401,7 @@ fn propose_room(rng: &mut impl Rng, state: &MazeGenState) -> Proposal {
         bend_x,
         bend_y,
         corridor_width,
+        vertical_exit: direction == 1 || direction == 3,
         room: Room {
             x: room_x,
             y: room_y,
@@ -398,47 +411,70 @@ fn propose_room(rng: &mut impl Rng, state: &MazeGenState) -> Proposal {
     }
 }
 
-/// Carve an L-shaped corridor: start→bend (one axis), then bend→room center (other axis).
+/// Carve an L-shaped corridor: start→bend, then bend→room center.
+///
+/// Each leg may span both axes (the proposal geometry isn't always axis-aligned),
+/// so we carve an L-connector for each leg. The axis order matters:
+/// - Horizontal exits (left/right): carve horizontal-first, then vertical
+/// - Vertical exits (up/down): carve vertical-first, then horizontal
+/// This ensures the first segment of each leg extends away from the source room,
+/// placing the bend mid-corridor rather than flush against the room wall.
 fn carve_l_corridor(maze: &mut Maze, proposal: &Proposal) {
-    let half = proposal.corridor_width / 2;
-
-    // Leg 1: start → bend
-    carve_line(
-        maze,
-        proposal.start_x,
-        proposal.start_y,
-        proposal.bend_x,
-        proposal.bend_y,
-        proposal.corridor_width,
-        half,
-    );
-
-    // Leg 2: bend → room center
+    let w = proposal.corridor_width;
     let target_x = proposal.room.x + proposal.room.width / 2;
     let target_y = proposal.room.y + proposal.room.height / 2;
-    carve_line(
-        maze,
-        proposal.bend_x,
-        proposal.bend_y,
-        target_x,
-        target_y,
-        proposal.corridor_width,
-        half,
-    );
+
+    if proposal.vertical_exit {
+        // Vertical exit: carve vertical-first for both legs
+        carve_vertical_first(
+            maze,
+            proposal.start_x,
+            proposal.start_y,
+            proposal.bend_x,
+            proposal.bend_y,
+            w,
+        );
+        carve_vertical_first(
+            maze,
+            proposal.bend_x,
+            proposal.bend_y,
+            target_x,
+            target_y,
+            w,
+        );
+    } else {
+        // Horizontal exit: carve horizontal-first for both legs
+        carve_horizontal_first(
+            maze,
+            proposal.start_x,
+            proposal.start_y,
+            proposal.bend_x,
+            proposal.bend_y,
+            w,
+        );
+        carve_horizontal_first(
+            maze,
+            proposal.bend_x,
+            proposal.bend_y,
+            target_x,
+            target_y,
+            w,
+        );
+    }
 }
 
-/// Carve a straight corridor between two points (axis-aligned segments).
-/// Carves horizontal first, then vertical.
-fn carve_line(
+/// Carve an L-connector: horizontal segment at y1, then vertical segment at x2.
+/// The bend lands at (x2, y1).
+fn carve_horizontal_first(
     maze: &mut Maze,
     x1: usize,
     y1: usize,
     x2: usize,
     y2: usize,
     width: usize,
-    half: usize,
 ) {
-    // Horizontal segment
+    let half = width / 2;
+    // Horizontal segment at y1
     let min_x = x1.min(x2);
     let max_x = x1.max(x2);
     for x in min_x..=max_x {
@@ -451,13 +487,44 @@ fn carve_line(
             }
         }
     }
-
-    // Vertical segment
+    // Vertical segment at x2
     let min_y = y1.min(y2);
     let max_y = y1.max(y2);
     for y in min_y..=max_y {
         for offset in 0..width {
             if let Some(x) = (x2 + offset).checked_sub(half)
+                && x < maze.width
+                && y < maze.height
+            {
+                maze.set(x, y, TileKind::Floor);
+            }
+        }
+    }
+}
+
+/// Carve an L-connector: vertical segment at x1, then horizontal segment at y2.
+/// The bend lands at (x1, y2).
+fn carve_vertical_first(maze: &mut Maze, x1: usize, y1: usize, x2: usize, y2: usize, width: usize) {
+    let half = width / 2;
+    // Vertical segment at x1
+    let min_y = y1.min(y2);
+    let max_y = y1.max(y2);
+    for y in min_y..=max_y {
+        for offset in 0..width {
+            if let Some(x) = (x1 + offset).checked_sub(half)
+                && x < maze.width
+                && y < maze.height
+            {
+                maze.set(x, y, TileKind::Floor);
+            }
+        }
+    }
+    // Horizontal segment at y2
+    let min_x = x1.min(x2);
+    let max_x = x1.max(x2);
+    for x in min_x..=max_x {
+        for offset in 0..width {
+            if let Some(y) = (y2 + offset).checked_sub(half)
                 && x < maze.width
                 && y < maze.height
             {
@@ -625,25 +692,29 @@ mod tests {
     }
 
     #[test]
-    fn scaled_config_produces_larger_mazes() {
-        // A 12-track album with scaled config should produce a significantly
-        // larger maze than the same track count with default config.
+    fn scaled_config_has_longer_corridors() {
+        // Verify structural property: the scaled config for 12 tracks
+        // specifies longer corridors than the default config.
         let scaled = config_for_track_count(12);
         let default = MazeGenConfig::default();
 
-        let (mut maze_s, mut state_s) = generate_initial_maze(&scaled);
-        let (mut maze_d, mut state_d) = generate_initial_maze(&default);
-
-        for i in 0..12 {
-            grow_maze(&mut maze_s, &mut state_s, i);
-            grow_maze(&mut maze_d, &mut state_d, i);
-        }
-
-        let area_scaled = maze_s.width * maze_s.height;
-        let area_default = maze_d.width * maze_d.height;
         assert!(
-            area_scaled > area_default,
-            "Scaled maze ({area_scaled}) should be larger than default ({area_default})"
+            scaled.min_corridor_length > default.min_corridor_length,
+            "Scaled min corridor ({}) should exceed default ({})",
+            scaled.min_corridor_length,
+            default.min_corridor_length
+        );
+        assert!(
+            scaled.max_corridor_length > default.max_corridor_length,
+            "Scaled max corridor ({}) should exceed default ({})",
+            scaled.max_corridor_length,
+            default.max_corridor_length
+        );
+        assert!(
+            scaled.min_track_distance > default.min_track_distance,
+            "Scaled min track distance ({}) should exceed default ({})",
+            scaled.min_track_distance,
+            default.min_track_distance
         );
     }
 

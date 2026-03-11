@@ -94,11 +94,11 @@ enum Commands {
         #[arg(long)]
         metadata: Option<PathBuf>,
 
-        /// Artist name — when combined with --album-name, skips the editor
+        /// Artist name — pre-populates the editor template
         #[arg(long)]
         artist: Option<String>,
 
-        /// Album title — when combined with --artist, skips the editor
+        /// Album title — pre-populates the editor template
         #[arg(long)]
         album_name: Option<String>,
 

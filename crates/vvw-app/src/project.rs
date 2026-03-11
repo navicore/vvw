@@ -118,6 +118,7 @@ pub fn save_project(
     maze: &Maze,
     gen_state: &MazeGenState,
     lighting: &LightingConfig,
+    physics: &vvw_core::physics::PhysicsConfig,
     track_audio: &HashMap<usize, TrackAudioFile>,
     album: &AlbumMetadata,
 ) -> Result<(), ProjectError> {
@@ -147,7 +148,7 @@ pub fn save_project(
         rooms: gen_state.rooms.clone(),
         maze_config: gen_state.config.clone(),
         lighting: lighting.clone(),
-        physics: vvw_core::physics::PhysicsConfig::default(),
+        physics: physics.clone(),
         tracks,
         album: album.clone(),
     };
@@ -196,7 +197,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         let album = AlbumMetadata::default();
-        save_project(&dir, &maze, &state, &lighting, &track_audio, &album).unwrap();
+        let physics = vvw_core::physics::PhysicsConfig::default();
+        save_project(
+            &dir,
+            &maze,
+            &state,
+            &lighting,
+            &physics,
+            &track_audio,
+            &album,
+        )
+        .unwrap();
         let (loaded_manifest, loaded_audio) = load_project(&dir).unwrap();
 
         assert_eq!(loaded_manifest.maze.width, maze.width);
@@ -236,7 +247,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         let album = AlbumMetadata::default();
-        save_project(&dir, &maze, &state, &lighting, &track_audio, &album).unwrap();
+        let physics = vvw_core::physics::PhysicsConfig::default();
+        save_project(
+            &dir,
+            &maze,
+            &state,
+            &lighting,
+            &physics,
+            &track_audio,
+            &album,
+        )
+        .unwrap();
         let (loaded_manifest, loaded_audio) = load_project(&dir).unwrap();
 
         assert_eq!(loaded_manifest.tracks.len(), 2);
