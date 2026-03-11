@@ -238,6 +238,43 @@ fn resolve_albums(albums: Vec<String>, all: bool) -> Result<Vec<String>> {
     }
 }
 
+/// Check remote R2 object size via `wrangler r2 object head`.
+/// Returns `Some(size)` if the object exists, `None` if it doesn't.
+fn r2_head(bucket: &str, key: &str) -> Result<Option<u64>> {
+    let output = std::process::Command::new("wrangler")
+        .args([
+            "r2",
+            "object",
+            "head",
+            &format!("{bucket}/{key}"),
+            "--remote",
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    // Parse contentLength from the JSON-ish output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("\"contentLength\":") {
+            let size_str = rest.trim().trim_end_matches(',');
+            if let Ok(size) = size_str.parse::<u64>() {
+                return Ok(Some(size));
+            }
+        }
+        // Also handle "contentLength": 12345 (with space after colon)
+        if let Some(rest) = trimmed.strip_prefix("contentLength:") {
+            let size_str = rest.trim().trim_end_matches(',');
+            if let Ok(size) = size_str.parse::<u64>() {
+                return Ok(Some(size));
+            }
+        }
+    }
+    // Object exists but we couldn't parse size — treat as missing to force re-upload
+    Ok(None)
+}
+
 /// Upload a single file to R2 via wrangler.
 fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
     let status = std::process::Command::new("wrangler")
@@ -268,18 +305,37 @@ fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
             audio_dir.display()
         );
 
+        let mut uploaded = 0;
+        let mut skipped = 0;
         for entry in std::fs::read_dir(&audio_dir)? {
             let entry = entry?;
             if !entry.file_type()?.is_file() {
                 continue;
             }
+            let local_size = entry.metadata()?.len();
             let filename = entry.file_name();
             let key = format!("{album}/audio/{}", filename.to_string_lossy());
-            print!("  Uploading {key}...");
+
+            if let Some(remote_size) = r2_head(bucket, &key)? {
+                if remote_size == local_size {
+                    println!("  Skipping {key} (already uploaded, {local_size} bytes)");
+                    skipped += 1;
+                    continue;
+                }
+                println!(
+                    "  Re-uploading {key} (size mismatch: local {local_size} vs remote {remote_size})"
+                );
+            } else {
+                print!("  Uploading {key}...");
+            }
+
             r2_put(bucket, &key, &entry.path())?;
             println!(" ok");
+            uploaded += 1;
         }
-        println!("  + {album} audio uploaded to R2 bucket '{bucket}'");
+        println!(
+            "  + {album}: {uploaded} uploaded, {skipped} skipped (already in R2 bucket '{bucket}')"
+        );
     }
     Ok(())
 }
