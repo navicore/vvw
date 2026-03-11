@@ -39,10 +39,6 @@ enum Commands {
         #[arg(long, short, default_value = "deploy")]
         output: PathBuf,
 
-        /// Force rebuild even if dist/ is newer than sources
-        #[arg(long)]
-        rebuild: bool,
-
         /// R2 public URL for audio files (e.g. `https://pub-xxx.r2.dev`).
         /// When set, audio files are excluded from the deploy directory
         /// and a _config.json is written pointing the player to R2.
@@ -427,12 +423,10 @@ fn main() -> Result<()> {
             albums,
             all,
             output,
-            rebuild,
             audio_base_url,
         } => {
             let album_names = resolve_albums(albums, all)?;
             let workspace_root = trunk_build::find_workspace_root()?;
-            trunk_build::build_wasm(&workspace_root, rebuild)?;
             assemble::assemble(
                 &workspace_root,
                 &album_names,
@@ -479,6 +473,9 @@ fn main() -> Result<()> {
                     &output.to_string_lossy(),
                     "--project-name",
                     &project,
+                    "--branch",
+                    "main",
+                    "--commit-dirty=true",
                 ],
                 "deploy",
             )?;

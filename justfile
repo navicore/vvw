@@ -89,6 +89,8 @@ WASM_OPT := `which wasm-opt 2>/dev/null || find ~/Library/Caches/dev.trunkrs.tru
 
 # Build WASM web player (release, size-optimized for Cloudflare Pages 25 MiB limit)
 build-web:
+    @echo "Cleaning dist for fresh build..."
+    rm -rf crates/vvw-web/dist
     @echo "Building WASM player..."
     cd crates/vvw-web && trunk build --release --cargo-profile release-wasm
     @echo "Running wasm-opt ({{WASM_OPT}})..."

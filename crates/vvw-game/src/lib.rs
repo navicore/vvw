@@ -17,6 +17,7 @@ pub mod mazegen;
 mod player;
 mod spatial;
 mod tiles;
+mod touch;
 
 pub use audio::{SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackIdCounter};
 pub use camera::{CameraPlugin, GameCamera};
@@ -46,6 +47,7 @@ impl Plugin for VvwGamePlugin {
             PlayerPlugin,
             SpatialAudioPlugin,
             CameraPlugin,
+            touch::TouchControlsPlugin,
         ));
     }
 }
