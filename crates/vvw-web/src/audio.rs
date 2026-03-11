@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
-use web_sys::{AudioContext, GainNode, HtmlAudioElement};
+use web_sys::{AudioContext, AudioContextState, GainNode, HtmlAudioElement};
 
 /// Panner abstraction: `StereoPannerNode` where supported, no-op otherwise.
 enum Panner {
@@ -124,6 +124,19 @@ impl WebAudioEngine {
     pub fn set_panning(&self, id: usize, pan: f32) {
         if let Some(track) = self.tracks.get(&id) {
             track.panner.set_pan(pan);
+        }
+    }
+
+    /// Returns true if the `AudioContext` has been suspended (e.g. after
+    /// backgrounding or device sleep).
+    pub fn is_suspended(&self) -> bool {
+        self.ctx.state() == AudioContextState::Suspended
+    }
+
+    /// Resume a suspended `AudioContext`. Must be called from a user gesture.
+    pub fn resume(&self) {
+        if let Err(e) = self.ctx.resume() {
+            web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
         }
     }
 }
