@@ -401,6 +401,7 @@ fn handle_maze_regen(
 
 /// Handle save requests: serialize current state to disk
 #[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
 fn handle_project_save(
     mut events: MessageReader<ProjectSaveRequested>,
     maze: Res<Maze>,

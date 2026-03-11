@@ -417,8 +417,8 @@ fn propose_room(rng: &mut impl Rng, state: &MazeGenState) -> Proposal {
 /// so we carve an L-connector for each leg. The axis order matters:
 /// - Horizontal exits (left/right): carve horizontal-first, then vertical
 /// - Vertical exits (up/down): carve vertical-first, then horizontal
-/// This ensures the first segment of each leg extends away from the source room,
-/// placing the bend mid-corridor rather than flush against the room wall.
+///   This ensures the first segment of each leg extends away from the source room,
+///   placing the bend mid-corridor rather than flush against the room wall.
 fn carve_l_corridor(maze: &mut Maze, proposal: &Proposal) {
     let w = proposal.corridor_width;
     let target_x = proposal.room.x + proposal.room.width / 2;
