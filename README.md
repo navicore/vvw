@@ -1,29 +1,32 @@
 # VVW - Visual Virtual World
 
-An audio exploration game where you navigate a 2D maze to discover and experience spatial audio. As you move through the maze, nearby audio tracks grow louder and distant ones fade away.
+An audio exploration game where you navigate a 2D maze to discover and experience spatial audio. As you move through the maze, nearby audio tracks grow louder and distant ones fade away — all driven by line-of-sight and distance.
 
-Built with [Bevy](https://bevyengine.org/) and [cpal](https://github.com/RustAudioGroup/cpal).
+Built with [Bevy](https://bevyengine.org/) and compiled to WASM. Deployed on Cloudflare Pages with audio streaming from R2.
 
 ## How It Works
 
-You control a player navigating a tile-based maze. Scattered throughout the maze are audio track icons, each emitting a different tone. Audio volume is determined by your distance to each track -- walk toward a track and it gets louder, walk away and it fades to silence.
-
-The audio engine runs on its own thread using cpal, communicating with the game thread via lock-free ring buffers (rtrb). No unsafe code.
+You control a player navigating a tile-based maze. Scattered throughout the maze are audio track icons, each playing a different track from an album. Volume and stereo panning are determined by line-of-sight and distance — walk toward a track and it gets louder, lose line of sight and it fades to silence.
 
 ## Prerequisites
 
 - Rust 1.93+ (edition 2024)
 - [just](https://github.com/casey/just) (command runner)
-- **Linux only:** `libasound2-dev` (ALSA headers for cpal)
+- [Trunk](https://trunkrs.dev/) (WASM build tool)
+- [wrangler](https://developers.cloudflare.com/workers/wrangler/) (Cloudflare CLI, for deploy)
 
-## Quick Start
+## Album Creation
 
 ```sh
-# Run the game
-just run
+# Create an album from a directory of audio files
+just create-album ./my-audio-files/
 
-# Run with debug logging
-just run-debug
+# Deploy: upload audio to R2, build WASM, assemble, deploy to Pages
+just deploy-album "My Album"
+
+# Local preview
+just assemble-local "My Album"
+just preview
 ```
 
 ### Controls
@@ -38,9 +41,6 @@ just run-debug
 ## Development
 
 ```sh
-# Format, build, and test
-just dev
-
 # Run the full CI check suite locally (same as GitHub Actions)
 just ci
 
@@ -52,36 +52,13 @@ just
 
 ```
 crates/
-  vvw-app/      # Binary entry point, window setup, camera
-  vvw-game/     # Bevy plugin: maze, player, tiles, audio bridge
-  vvw-audio/    # Audio engine: cpal output, looping samplers, ring buffer comms
-```
-
-| Crate | Description |
-|-------|-------------|
-| `vvw-app` | Application entry point -- window, camera, logging |
-| `vvw-game` | Game plugin -- maze rendering, player movement, audio integration |
-| `vvw-audio` | Audio engine -- fixed N-track topology, looping samplers, lock-free communication |
-
-## Architecture
-
-```
-Game Thread (Bevy)                    Audio Thread (cpal callback)
-─────────────────                     ──────────────────────────
-update_track_gains:                   Process commands:
-  for each track:                       SetTrackGain -> track.gain = gain
-    distance = player <-> track         Start / Stop -> toggle playback
-    gain = linear_falloff(distance)
-    push SetTrackGain command         Mix tracks:
-                                        for each track:
-         ─── rtrb ring buffer ──>         sampler.generate(L, R)
-                                          output += samples * gain
-         <── rtrb ring buffer ───
-poll_audio_events:
-  log Started / Stopped / Error
+  vvw-core/     # Platform-agnostic types: maze, spatial audio, physics, lighting
+  vvw-game/     # Bevy plugin: maze rendering, player, spatial audio interpolation
+  vvw-light/    # 2D lighting plugin: point lights, occluders, ambient
+  vvw-web/      # WASM web player: Web Audio API, overlay UI
+  vvw-deploy/   # CLI: album creation, assembly, R2 upload, Pages deploy
 ```
 
 ## License
 
 MIT
-

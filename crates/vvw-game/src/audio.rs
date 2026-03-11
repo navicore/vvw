@@ -1,26 +1,16 @@
 //! Spatial audio — platform-independent gain/pan interpolation and lighting sync
 //!
-//! The actual audio backend (kira, Web Audio API, etc.) is provided by the
-//! platform layer via [`TrackHandles`]. This module only computes spatial
-//! targets and interpolates them smoothly.
-
-use std::collections::HashMap;
+//! Computes spatial gain/pan targets per frame and interpolates smoothly.
+//! Platform layers read `TrackAudioState` after `SpatialAudioSet` to push
+//! values to their audio backend (e.g. Web Audio API).
 
 use bevy::prelude::*;
-use vvw_core::audio::TrackHandle;
 use vvw_light::{AmbientLight2d, LightingConfig, PointLight2d};
 
 use crate::maze::{TrackIcon, TrackLight};
 use crate::player::{Player, PlayerLight};
 use crate::spatial;
 use crate::tiles::TilePos;
-
-/// Holds all active track handles, indexed by `track_id`.
-/// Uses `Box<dyn TrackHandle>` so the game layer is audio-backend agnostic.
-#[derive(Resource, Default)]
-pub struct TrackHandles {
-    pub handles: HashMap<usize, Box<dyn TrackHandle>>,
-}
 
 /// Counter for track IDs
 #[derive(Resource, Default)]
@@ -58,41 +48,22 @@ impl Default for TrackAudioState {
 pub struct SpatialAudioSet;
 
 /// Spatial audio plugin: gain/pan interpolation and lighting sync.
-/// Platform-independent — works with any audio backend that implements [`TrackHandle`].
 pub struct SpatialAudioPlugin;
 
 impl Plugin for SpatialAudioPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LightingConfig>()
-            .init_resource::<TrackHandles>()
             .init_resource::<TrackIdCounter>()
             .add_systems(
                 Update,
                 (
-                    reset_new_tracks,
                     compute_spatial_targets,
-                    interpolate_and_send,
+                    interpolate_audio_state,
                     apply_lighting_config,
                 )
                     .chain()
                     .in_set(SpatialAudioSet),
             );
-    }
-}
-
-/// When `TrackAudioState` is freshly spawned (e.g. after maze respawn), the kira
-/// handle may still be playing at its previous volume. Force it to zero+pause so
-/// there's no audible glitch until the spatial system fades it back in.
-#[allow(clippy::needless_pass_by_value)]
-fn reset_new_tracks(
-    new_tracks: Query<&TrackIcon, Added<TrackAudioState>>,
-    mut handles: ResMut<TrackHandles>,
-) {
-    for track_icon in &new_tracks {
-        if let Some(track) = handles.handles.get_mut(&track_icon.track_id) {
-            track.set_volume(0.0);
-            track.pause();
-        }
     }
 }
 
@@ -131,43 +102,19 @@ fn compute_spatial_targets(
     }
 }
 
-/// Interpolate current gain/pan toward targets and send to the audio backend.
-/// Pauses tracks at zero gain to free audio thread resources;
-/// resumes them when they become audible again.
+/// Interpolate current gain/pan toward targets.
+/// Platform layers read the resulting `TrackAudioState` after `SpatialAudioSet`.
 #[allow(clippy::needless_pass_by_value)]
-fn interpolate_and_send(
-    time: Res<Time>,
-    mut handles: ResMut<TrackHandles>,
-    mut track_query: Query<(&TrackIcon, &mut TrackAudioState)>,
-) {
+fn interpolate_audio_state(time: Res<Time>, mut track_query: Query<&mut TrackAudioState>) {
     let dt = time.delta_secs();
 
-    for (track_icon, mut state) in &mut track_query {
-        let was_silent = state.current_gain == 0.0;
-
+    for mut state in &mut track_query {
         let lerp_factor = (state.fade_speed * dt).min(1.0);
         state.current_gain += (state.target_gain - state.current_gain) * lerp_factor;
         state.current_pan += (state.target_pan - state.current_pan) * lerp_factor;
 
         if state.current_gain < 0.001 {
             state.current_gain = 0.0;
-        }
-
-        if let Some(track) = handles.handles.get_mut(&track_icon.track_id) {
-            if state.current_gain == 0.0 {
-                // Fully silent — pause to save audio thread work
-                if !was_silent {
-                    track.set_volume(0.0);
-                    track.pause();
-                }
-            } else {
-                // Audible — resume if we were paused, then update volume/pan
-                if was_silent {
-                    track.resume();
-                }
-                track.set_volume(state.current_gain);
-                track.set_panning(state.current_pan);
-            }
         }
     }
 }

@@ -1,8 +1,7 @@
 //! VVW Core — platform-independent types, math, and data structures
 //!
-//! This crate contains everything that can be shared between the desktop app,
-//! WASM web player, and backend server. No `std::fs`, no `dirs`, no `kira`,
-//! no platform-specific code.
+//! This crate contains everything shared between the web player, deploy CLI,
+//! and game plugin. No `std::fs`, no `dirs`, no platform-specific code.
 
 pub mod audio;
 pub mod lighting;
