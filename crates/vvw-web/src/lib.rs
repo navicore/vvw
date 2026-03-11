@@ -121,7 +121,7 @@ async fn run() -> Result<(), JsValue> {
             Update,
             (
                 activate_audio_on_click,
-                resume_suspended_audio,
+                resume_suspended_audio.after(activate_audio_on_click),
                 web_audio_sync.after(SpatialAudioSet),
                 handle_track_clicks.after(SpatialAudioSet),
             ),
@@ -163,7 +163,7 @@ fn resume_suspended_audio(
     mouse: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
 ) {
-    if !engine.is_suspended() {
+    if !engine.needs_resume() {
         return;
     }
     let has_gesture =

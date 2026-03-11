@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use web_sys::{AudioContext, AudioContextState, GainNode, HtmlAudioElement};
 
@@ -127,16 +128,30 @@ impl WebAudioEngine {
         }
     }
 
-    /// Returns true if the `AudioContext` has been suspended (e.g. after
-    /// backgrounding or device sleep).
-    pub fn is_suspended(&self) -> bool {
-        self.ctx.state() == AudioContextState::Suspended
+    /// Returns true if the `AudioContext` needs resuming (suspended, or iOS
+    /// Safari's non-standard "interrupted" state). We check for "not running
+    /// and not closed" rather than specifically `Suspended` so that unknown
+    /// states (like `interrupted`) are also caught.
+    pub fn needs_resume(&self) -> bool {
+        let state = self.ctx.state();
+        state != AudioContextState::Running && state != AudioContextState::Closed
     }
 
     /// Resume a suspended `AudioContext`. Must be called from a user gesture.
     pub fn resume(&self) {
-        if let Err(e) = self.ctx.resume() {
-            web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
+        match self.ctx.resume() {
+            Ok(promise) => {
+                let on_err = Closure::once(move |e: JsValue| {
+                    web_sys::console::error_1(
+                        &format!("AudioContext resume rejected: {e:?}").into(),
+                    );
+                });
+                let _ = promise.catch(&on_err);
+                on_err.forget();
+            }
+            Err(e) => {
+                web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
+            }
         }
     }
 }
