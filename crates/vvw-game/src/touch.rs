@@ -15,7 +15,7 @@ impl Plugin for TouchControlsPlugin {
             .add_systems(Startup, spawn_dpad_overlay)
             .add_systems(
                 Update,
-                (detect_touch_device, handle_touch_input, update_dpad_visuals),
+                (detect_touch_device, handle_touch_input, update_dpad_visuals).chain(),
             );
     }
 }
@@ -130,16 +130,10 @@ fn spawn_dpad_button(commands: &mut Commands, parent: Entity, direction: Vec2, n
         .spawn((
             DPadButton { direction },
             node,
-            // Interaction gives us Bevy's built-in touch/click hit testing
             Interaction::None,
+            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, DPAD_ALPHA)),
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, DPAD_ALPHA * 0.5)),
         ))
-        .insert(BorderColor::all(Color::srgba(1.0, 1.0, 1.0, DPAD_ALPHA)))
-        .insert(BackgroundColor(Color::srgba(
-            1.0,
-            1.0,
-            1.0,
-            DPAD_ALPHA * 0.5,
-        )))
         .id();
     commands.entity(parent).add_child(child);
 }
@@ -176,16 +170,15 @@ fn handle_touch_input(
         return;
     }
 
+    // Single-pointer: only one button can be Interaction::Pressed at a time,
+    // so only cardinal directions are possible (no diagonals).
     let mut direction = Vec2::ZERO;
 
     for (interaction, button) in &button_query {
         if *interaction == Interaction::Pressed {
-            direction += button.direction;
+            direction = button.direction;
+            break;
         }
-    }
-
-    if direction != Vec2::ZERO {
-        direction = direction.normalize();
     }
 
     let dt = time.delta_secs();

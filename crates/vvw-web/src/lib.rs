@@ -233,7 +233,7 @@ fn setup_overlay_click(ctx: web_sys::AudioContext, flag: Arc<AtomicBool>) -> Res
 
     let activated_for_closure = Arc::clone(&activated);
     let closure = Closure::<dyn FnMut()>::new(move || {
-        // Only fire once — touchend and click may both fire on mobile
+        // Only fire once
         if activated_for_closure.swap(true, Ordering::Relaxed) {
             return;
         }
@@ -260,7 +260,6 @@ fn setup_overlay_click(ctx: web_sys::AudioContext, flag: Arc<AtomicBool>) -> Res
     });
 
     overlay.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
-    overlay.add_event_listener_with_callback("touchend", closure.as_ref().unchecked_ref())?;
     closure.forget();
 
     Ok(())
