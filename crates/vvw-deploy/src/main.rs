@@ -4,6 +4,7 @@ mod assemble;
 mod create;
 mod trunk_build;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -238,60 +239,62 @@ fn resolve_albums(albums: Vec<String>, all: bool) -> Result<Vec<String>> {
     }
 }
 
-/// Check remote R2 object size via `wrangler r2 object head`.
-/// Returns `Some(size)` if the object exists, `None` if it doesn't.
-fn r2_head(bucket: &str, key: &str) -> Result<Option<u64>> {
-    let output = std::process::Command::new("wrangler")
-        .args([
-            "r2",
-            "object",
-            "head",
-            &format!("{bucket}/{key}"),
-            "--remote",
-        ])
-        .output()?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-    // Parse contentLength from the JSON-ish output
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("\"contentLength\":") {
-            let size_str = rest.trim().trim_end_matches(',');
-            if let Ok(size) = size_str.parse::<u64>() {
-                return Ok(Some(size));
-            }
-        }
-        // Also handle "contentLength": 12345 (with space after colon)
-        if let Some(rest) = trimmed.strip_prefix("contentLength:") {
-            let size_str = rest.trim().trim_end_matches(',');
-            if let Ok(size) = size_str.parse::<u64>() {
-                return Ok(Some(size));
-            }
-        }
-    }
-    // Object exists but we couldn't parse size — treat as missing to force re-upload
-    Ok(None)
+/// Local upload manifest: tracks which files have been successfully uploaded to R2.
+/// Stored as `.r2-uploaded` in the project's audio directory.
+/// Each line is `filename:size` for files confirmed uploaded.
+fn load_upload_manifest(audio_dir: &Path) -> HashMap<String, u64> {
+    let manifest_path = audio_dir.join(".r2-uploaded");
+    let Ok(content) = std::fs::read_to_string(&manifest_path) else {
+        return HashMap::new();
+    };
+    content
+        .lines()
+        .filter_map(|line| {
+            let (name, size_str) = line.rsplit_once(':')?;
+            let size = size_str.parse().ok()?;
+            Some((name.to_string(), size))
+        })
+        .collect()
 }
 
-/// Upload a single file to R2 via wrangler.
-fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
-    let status = std::process::Command::new("wrangler")
-        .args([
-            "r2",
-            "object",
-            "put",
-            &format!("{bucket}/{key}"),
-            "--file",
-            &file.to_string_lossy(),
-            "--remote",
-        ])
-        .status()?;
-    if !status.success() {
-        anyhow::bail!("wrangler r2 object put failed for {key}");
-    }
+fn save_upload_manifest(audio_dir: &Path, manifest: &HashMap<String, u64>) -> Result<()> {
+    let manifest_path = audio_dir.join(".r2-uploaded");
+    let mut lines: Vec<String> = manifest
+        .iter()
+        .map(|(name, size)| format!("{name}:{size}"))
+        .collect();
+    lines.sort();
+    std::fs::write(&manifest_path, lines.join("\n"))?;
     Ok(())
+}
+
+/// Upload a single file to R2 via wrangler, with retries for transient failures.
+fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
+    const MAX_RETRIES: u32 = 3;
+    for attempt in 1..=MAX_RETRIES {
+        let status = std::process::Command::new("wrangler")
+            .args([
+                "r2",
+                "object",
+                "put",
+                &format!("{bucket}/{key}"),
+                "--file",
+                &file.to_string_lossy(),
+                "--remote",
+            ])
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        if attempt < MAX_RETRIES {
+            let wait = attempt * 2;
+            eprintln!("  Retry {attempt}/{MAX_RETRIES} for {key} (waiting {wait}s)...");
+            std::thread::sleep(std::time::Duration::from_secs(u64::from(wait)));
+        } else {
+            anyhow::bail!("wrangler r2 object put failed for {key} after {MAX_RETRIES} attempts");
+        }
+    }
+    unreachable!()
 }
 
 fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
@@ -305,34 +308,42 @@ fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
             audio_dir.display()
         );
 
+        let mut manifest = load_upload_manifest(&audio_dir);
         let mut uploaded = 0;
         let mut skipped = 0;
+
         for entry in std::fs::read_dir(&audio_dir)? {
             let entry = entry?;
             if !entry.file_type()?.is_file() {
                 continue;
             }
-            let local_size = entry.metadata()?.len();
             let filename = entry.file_name();
-            let key = format!("{album}/audio/{}", filename.to_string_lossy());
-
-            if let Some(remote_size) = r2_head(bucket, &key)? {
-                if remote_size == local_size {
-                    println!("  Skipping {key} (already uploaded, {local_size} bytes)");
-                    skipped += 1;
-                    continue;
-                }
-                println!(
-                    "  Re-uploading {key} (size mismatch: local {local_size} vs remote {remote_size})"
-                );
-            } else {
-                print!("  Uploading {key}...");
+            let name = filename.to_string_lossy().to_string();
+            if name == ".r2-uploaded" {
+                continue;
             }
 
+            let local_size = entry.metadata()?.len();
+
+            // Skip if already uploaded with the same size
+            if manifest.get(&name) == Some(&local_size) {
+                println!("  Skipping {album}/audio/{name} (already uploaded, {local_size} bytes)");
+                skipped += 1;
+                continue;
+            }
+
+            let key = format!("{album}/audio/{name}");
+            print!("  Uploading {key}...");
             r2_put(bucket, &key, &entry.path())?;
             println!(" ok");
             uploaded += 1;
+
+            // Record successful upload
+            manifest.insert(name, local_size);
+            // Save after each file so partial uploads are tracked
+            save_upload_manifest(&audio_dir, &manifest)?;
         }
+
         println!(
             "  + {album}: {uploaded} uploaded, {skipped} skipped (already in R2 bucket '{bucket}')"
         );

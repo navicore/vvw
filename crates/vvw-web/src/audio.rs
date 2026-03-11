@@ -2,17 +2,43 @@
 //!
 //! Uses `MediaElementAudioSourceNode` so the browser streams and decodes audio
 //! incrementally — no need to download entire files before playback begins.
+//!
+//! Safari compatibility:
+//! - Audio elements are created eagerly (to start buffering), but NOT connected
+//!   to `createMediaElementSource()` until the user clicks. Safari throws
+//!   `NotSupportedError` on `play()` for elements already captured by Web Audio.
+//! - `StereoPannerNode` fallback for older Safari (pre-14.1).
 
 use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
-use web_sys::{AudioContext, GainNode, HtmlAudioElement, StereoPannerNode};
+use web_sys::{AudioContext, GainNode, HtmlAudioElement};
 
-/// Per-track audio node chain: `<audio>`(loop) -> media element source -> gain -> panner -> dest
+/// Panner abstraction: `StereoPannerNode` where supported, no-op otherwise.
+enum Panner {
+    Stereo(web_sys::StereoPannerNode),
+    None,
+}
+
+impl Panner {
+    fn set_pan(&self, value: f32) {
+        if let Self::Stereo(node) = self {
+            node.pan().set_value(value);
+        }
+    }
+}
+
+/// Per-track audio node chain (after activation):
+/// `<audio>`(loop) -> media element source -> gain -> panner -> dest
 struct WebTrack {
-    audio_el: HtmlAudioElement,
     gain_node: GainNode,
-    panner_node: StereoPannerNode,
+    panner: Panner,
+}
+
+/// A track that hasn't been wired into the Web Audio graph yet.
+struct PendingTrack {
+    id: usize,
+    audio_el: HtmlAudioElement,
 }
 
 /// Manages the Web Audio API context and all track playback.
@@ -21,6 +47,8 @@ struct WebTrack {
 pub struct WebAudioEngine {
     ctx: AudioContext,
     tracks: HashMap<usize, WebTrack>,
+    /// Tracks waiting to be connected (before user gesture).
+    pending: Vec<PendingTrack>,
 }
 
 impl WebAudioEngine {
@@ -30,52 +58,60 @@ impl WebAudioEngine {
         Ok(Self {
             ctx,
             tracks: HashMap::new(),
+            pending: Vec::new(),
         })
     }
 
-    /// Create a streaming audio node chain for a track URL.
-    /// The browser streams and decodes the file — no full download required.
+    /// Register a track URL. Creates the `<audio>` element (starts buffering)
+    /// but does NOT connect to Web Audio yet — that happens in `activate()`.
     pub fn add_track(&mut self, id: usize, url: &str) -> Result<(), JsValue> {
         let audio_el = HtmlAudioElement::new_with_src(url)?;
         audio_el.set_loop(true);
         audio_el.set_preload("auto");
-        // CORS required for cross-origin R2 audio routed through Web Audio API
         audio_el.set_cross_origin(Some("anonymous"));
+        audio_el.set_attribute("playsinline", "")?;
 
-        let source = self.ctx.create_media_element_source(&audio_el)?;
+        self.pending.push(PendingTrack { id, audio_el });
+        Ok(())
+    }
 
-        let gain_node = self.ctx.create_gain()?;
-        gain_node.gain().set_value(0.0);
+    /// Wire all pending tracks into the Web Audio graph and start playback.
+    /// Must be called from within a user gesture (click handler).
+    pub fn activate(&mut self) -> Result<(), JsValue> {
+        for pending in self.pending.drain(..) {
+            // Call play() BEFORE createMediaElementSource — Safari requirement
+            if let Err(e) = pending.audio_el.play() {
+                web_sys::console::error_1(
+                    &format!("track {} play() failed: {e:?}", pending.id).into(),
+                );
+            }
 
-        let panner_node = StereoPannerNode::new(&self.ctx)?;
-        panner_node.pan().set_value(0.0);
+            let source = self.ctx.create_media_element_source(&pending.audio_el)?;
 
-        // Wire: <audio> -> source -> gain -> panner -> destination
-        source.connect_with_audio_node(&gain_node)?;
-        gain_node.connect_with_audio_node(&panner_node)?;
-        panner_node.connect_with_audio_node(&self.ctx.destination())?;
+            let gain_node = self.ctx.create_gain()?;
+            gain_node.gain().set_value(0.0);
 
-        self.tracks.insert(
-            id,
-            WebTrack {
-                audio_el,
-                gain_node,
-                panner_node,
-            },
-        );
+            let panner = if let Ok(panner_node) = web_sys::StereoPannerNode::new(&self.ctx) {
+                panner_node.pan().set_value(0.0);
+                source.connect_with_audio_node(&gain_node)?;
+                gain_node.connect_with_audio_node(&panner_node)?;
+                panner_node.connect_with_audio_node(&self.ctx.destination())?;
+                Panner::Stereo(panner_node)
+            } else {
+                source.connect_with_audio_node(&gain_node)?;
+                gain_node.connect_with_audio_node(&self.ctx.destination())?;
+                Panner::None
+            };
 
+            self.tracks
+                .insert(pending.id, WebTrack { gain_node, panner });
+        }
         Ok(())
     }
 
     /// Clone the `AudioContext` reference for the overlay click handler.
     pub fn ctx(&self) -> AudioContext {
         self.ctx.clone()
-    }
-
-    /// Clone all audio element references for the overlay click handler.
-    /// These are needed to call `play()` within the user gesture.
-    pub fn audio_elements(&self) -> Vec<HtmlAudioElement> {
-        self.tracks.values().map(|t| t.audio_el.clone()).collect()
     }
 
     /// Set volume for a track (0.0 = silent, 1.0 = full)
@@ -88,7 +124,7 @@ impl WebAudioEngine {
     /// Set stereo pan for a track (-1.0 = left, 0.0 = center, 1.0 = right)
     pub fn set_panning(&self, id: usize, pan: f32) {
         if let Some(track) = self.tracks.get(&id) {
-            track.panner_node.pan().set_value(pan);
+            track.panner.set_pan(pan);
         }
     }
 }

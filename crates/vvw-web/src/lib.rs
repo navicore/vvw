@@ -1,8 +1,7 @@
 //! VVW WASM web player — Bevy app with shared game plugin and Web Audio API
 //!
-//! Uses the same `VvwGamePlugin` as the desktop app: avian2d physics,
-//! custom 2D lighting, and spatial audio. Audio playback uses the Web Audio API
-//! with `MediaElementAudioSourceNode` for streaming from R2.
+//! Uses `VvwGamePlugin` for platform-independent game logic. Audio playback
+//! uses the Web Audio API with `MediaElementAudioSourceNode` for streaming from R2.
 
 // WASM is single-threaded; futures don't need Send
 #![allow(clippy::future_not_send)]
@@ -11,9 +10,11 @@ mod audio;
 mod project;
 mod ui;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlAudioElement;
 
 use vvw_game::{
     Maze, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
@@ -21,6 +22,10 @@ use vvw_game::{
 };
 
 use audio::WebAudioEngine;
+
+/// Shared flag set by the overlay click handler, read by a Bevy system.
+#[derive(Resource)]
+struct AudioActivationFlag(Arc<AtomicBool>);
 
 /// WASM entry point — called automatically when the module loads
 #[cfg_attr(not(test), wasm_bindgen(start))]
@@ -51,7 +56,7 @@ async fn run() -> Result<(), JsValue> {
     // 2. Populate album info on the overlay
     ui::populate_album_info(&loaded.manifest.album);
 
-    // 3. Set up Web Audio engine with streaming tracks
+    // 3. Set up Web Audio engine — tracks are registered but NOT connected yet
     let mut engine = WebAudioEngine::new()?;
     let audio_base_url = &loaded.audio_base_url;
 
@@ -76,10 +81,12 @@ async fn run() -> Result<(), JsValue> {
         .max()
         .unwrap_or(0);
 
-    // 4. Set up overlay click handler (must use cloned refs — engine moves into Bevy)
+    // 4. Set up overlay click handler with shared activation flag.
+    // The click resumes AudioContext; a Bevy system picks up the flag
+    // and calls engine.activate() to wire tracks + start playback.
+    let activation_flag = Arc::new(AtomicBool::new(false));
     let ctx_for_click = engine.ctx();
-    let elements_for_click = engine.audio_elements();
-    setup_overlay_click(ctx_for_click, elements_for_click)?;
+    setup_overlay_click(ctx_for_click, Arc::clone(&activation_flag))?;
 
     // 5. Inject track metadata into DOM for the foldout
     ui::inject_track_metadata(&loaded.manifest.tracks);
@@ -94,6 +101,7 @@ async fn run() -> Result<(), JsValue> {
         .insert_resource(lighting)
         .insert_resource(physics)
         .insert_resource(TrackIdCounter(next_id))
+        .insert_resource(AudioActivationFlag(activation_flag))
         .insert_non_send_resource(engine)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -110,6 +118,7 @@ async fn run() -> Result<(), JsValue> {
         .add_systems(
             Update,
             (
+                activate_audio_on_click,
                 web_audio_sync.after(SpatialAudioSet),
                 handle_track_clicks.after(SpatialAudioSet),
             ),
@@ -128,6 +137,18 @@ fn setup_web_maze(
     physics: Res<vvw_core::physics::PhysicsConfig>,
 ) {
     spawn_maze_tiles(&mut commands, &maze, &lighting, &physics);
+}
+
+/// Check the activation flag each frame. When the overlay is clicked,
+/// wire up the Web Audio graph and start playback.
+#[allow(clippy::needless_pass_by_value)]
+fn activate_audio_on_click(flag: Res<AudioActivationFlag>, mut engine: NonSendMut<WebAudioEngine>) {
+    if flag.0.swap(false, Ordering::Relaxed) {
+        web_sys::console::log_1(&"Activating audio engine...".into());
+        if let Err(e) = engine.activate() {
+            web_sys::console::error_1(&format!("Audio activation failed: {e:?}").into());
+        }
+    }
 }
 
 /// Sync spatial audio state to the Web Audio API engine each frame.
@@ -189,14 +210,17 @@ fn handle_track_clicks(
     }
 }
 
-/// Set up the overlay click handler that starts audio playback.
+/// Set up the overlay click handler.
 ///
-/// `AudioContext.resume()` and `<audio>.play()` must be called synchronously
-/// within the user gesture — NOT after an await or in a `spawn_local`.
-fn setup_overlay_click(
-    ctx: web_sys::AudioContext,
-    elements: Vec<HtmlAudioElement>,
-) -> Result<(), JsValue> {
+/// The click handler resumes the `AudioContext` (required by browser autoplay policy)
+/// and sets the activation flag. A Bevy system then calls `engine.activate()` to
+/// wire tracks into the Web Audio graph and start playback.
+///
+/// This two-step approach is needed because Safari throws `NotSupportedError` when
+/// `play()` is called on an `<audio>` element already captured by
+/// `createMediaElementSource()`. By deferring the capture until after `play()`,
+/// both Safari and other browsers work correctly.
+fn setup_overlay_click(ctx: web_sys::AudioContext, flag: Arc<AtomicBool>) -> Result<(), JsValue> {
     let document = web_sys::window()
         .ok_or("no window")?
         .document()
@@ -205,30 +229,17 @@ fn setup_overlay_click(
     let overlay = document.get_element_by_id("overlay").ok_or("no overlay")?;
 
     let closure = Closure::once(move || {
-        // Resume AudioContext synchronously within the click gesture
+        // Hide overlay and show header immediately (visual feedback)
+        let _ = ui::hide_overlay();
+        ui::show_header();
+
+        // Resume AudioContext synchronously within the user gesture
         if let Err(e) = ctx.resume() {
             web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
         }
 
-        // Start playback on all tracks
-        for el in &elements {
-            match el.play() {
-                Ok(promise) => {
-                    let on_err = Closure::once(move |e: JsValue| {
-                        web_sys::console::error_1(&format!("track play rejected: {e:?}").into());
-                    });
-                    let _ = promise.catch(&on_err);
-                    on_err.forget();
-                }
-                Err(e) => {
-                    web_sys::console::error_1(&format!("track play() failed: {e:?}").into());
-                }
-            }
-        }
-
-        // Hide the overlay, show the header
-        let _ = ui::hide_overlay();
-        ui::show_header();
+        // Signal the Bevy system to activate the audio engine
+        flag.store(true, Ordering::Relaxed);
     });
 
     overlay.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
