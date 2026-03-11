@@ -94,7 +94,11 @@ pub fn set_build_info() {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
     };
-    set_text(&document, "header-build", env!("VVW_BUILD_DATETIME"));
+    set_text(
+        &document,
+        "header-build",
+        &format!("build {}", env!("VVW_BUILD_DATETIME")),
+    );
 }
 
 /// Show the album header bar
