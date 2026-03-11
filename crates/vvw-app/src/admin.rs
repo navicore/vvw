@@ -16,8 +16,10 @@ use vvw_audio::GameAudioManager;
 use vvw_core::project::{AlbumMetadata, TrackMetadata};
 use vvw_light::LightingConfig;
 
+use avian2d::prelude::*;
 use vvw_game::{
-    Maze, MazeChanged, Player, TrackAudioState, TrackHandles, TrackIcon, TrackIdCounter,
+    Maze, MazeChanged, Player, PlayerMovement, TrackAudioState, TrackHandles, TrackIcon,
+    TrackIdCounter,
     mazegen::{self, MazeGenConfig, MazeGenState, generate_initial_maze},
     spawn_maze_tiles,
 };
@@ -247,7 +249,7 @@ fn load_project_audio(
 }
 
 /// Handle file drag-and-drop: load audio, grow maze, create track
-#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 fn handle_file_drop(
     mut drop_events: MessageReader<FileDragAndDrop>,
     mut manager: Option<NonSendMut<GameAudioManager>>,
@@ -439,7 +441,11 @@ fn handle_project_save(
 }
 
 /// Handle load requests at runtime: replace all state from a saved project
-#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_pass_by_value,
+    clippy::type_complexity
+)]
 fn handle_project_load(
     mut events: MessageReader<ProjectLoadRequested>,
     mut manager: Option<NonSendMut<GameAudioManager>>,
@@ -452,7 +458,17 @@ fn handle_project_load(
     mut track_audio: ResMut<TrackAudioFiles>,
     mut album_meta: ResMut<AlbumMetadataResource>,
     mut maze_changed: MessageWriter<MazeChanged>,
-    mut player_query: Query<&mut Transform, With<Player>>,
+    mut player_query: Query<
+        (
+            &mut Transform,
+            &mut PlayerMovement,
+            &mut Friction,
+            &mut Restitution,
+            &mut LinearDamping,
+            &mut AngularDamping,
+        ),
+        With<Player>,
+    >,
     mut project_name: ResMut<ProjectNameInput>,
     mut project_list: ResMut<CachedProjectList>,
 ) {
@@ -537,12 +553,25 @@ fn handle_project_load(
         }
     }
 
-    // Move player to new start position
+    // Move player to new start position and apply loaded physics
     if let Some(start) = maze.find_player_start() {
         let world_pos = start.to_world();
-        for mut transform in &mut player_query {
+        for (
+            mut transform,
+            mut movement,
+            mut friction,
+            mut restitution,
+            mut lin_damp,
+            mut ang_damp,
+        ) in &mut player_query
+        {
             transform.translation.x = world_pos.x;
             transform.translation.y = world_pos.y;
+            movement.speed = physics.player_speed;
+            *friction = Friction::new(physics.player_friction);
+            *restitution = Restitution::new(physics.player_restitution);
+            lin_damp.0 = physics.player_linear_damping;
+            ang_damp.0 = physics.player_angular_damping;
         }
     }
 

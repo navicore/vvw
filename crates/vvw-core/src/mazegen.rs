@@ -193,6 +193,16 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
     for _ in 0..MAX_ATTEMPTS {
         let candidate = propose_room(&mut rng, state);
 
+        // Reject proposals that touch the maze border (x=0/y=0).
+        // Left/down exits can saturate_sub to 0, destroying border walls.
+        if candidate.room.x == 0
+            || candidate.room.y == 0
+            || candidate.bend_x == 0
+            || candidate.bend_y == 0
+        {
+            continue;
+        }
+
         // Check room overlap
         let max_overlap = state
             .rooms
@@ -270,6 +280,10 @@ pub fn grow_maze(maze: &mut Maze, state: &mut MazeGenState, track_id: usize) -> 
             }
         }
     }
+    debug_assert!(
+        !maze.track_ids.contains_key(&(ix, iy)),
+        "track icon placement overwrites existing track at ({ix}, {iy})"
+    );
     maze.set(ix, iy, TileKind::TrackIcon);
     maze.track_ids.insert((ix, iy), track_id);
 
