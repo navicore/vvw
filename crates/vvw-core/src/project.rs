@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::lighting::LightingConfig;
 use crate::maze::Maze;
 use crate::mazegen::{MazeGenConfig, Room};
+use crate::physics::PhysicsConfig;
 
 /// Metadata for a single audio track in the project
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +47,8 @@ pub struct ProjectManifest {
     pub rooms: Vec<Room>,
     pub maze_config: MazeGenConfig,
     pub lighting: LightingConfig,
+    #[serde(default)]
+    pub physics: PhysicsConfig,
     pub tracks: Vec<TrackEntry>,
     #[serde(default)]
     pub album: AlbumMetadata,
@@ -118,6 +121,7 @@ mod tests {
             rooms: state.rooms,
             maze_config: config,
             lighting,
+            physics: PhysicsConfig::default(),
             tracks: vec![TrackEntry {
                 track_id: 0,
                 original_filename: "song.mp3".to_string(),

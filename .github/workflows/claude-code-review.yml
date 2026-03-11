@@ -33,10 +33,10 @@ jobs:
             Focus on:
             - Correctness: logic errors, off-by-one, resource leaks, unsound unsafe
             - Bevy ECS patterns: system ordering, query conflicts, deferred command pitfalls, component access
-            - Audio: kira handle lifecycle, spatial panning math, volume interpolation
+            - Audio: Web Audio API integration, spatial panning math, volume interpolation
             - Performance: per-frame allocations, unnecessary clones, query efficiency
             - Concurrency: non-send resources, system parallelism conflicts
-            - Security: file path handling in drag-and-drop, no panics on untrusted input
+            - Security: file path handling, no panics on untrusted input
 
             Do NOT flag:
             - Style nits or formatting (clippy pedantic handles this)

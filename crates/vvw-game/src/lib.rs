@@ -18,9 +18,7 @@ mod player;
 mod spatial;
 mod tiles;
 
-pub use audio::{
-    SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackHandles, TrackIdCounter,
-};
+pub use audio::{SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackIdCounter};
 pub use camera::{CameraPlugin, GameCamera};
 pub use maze::{
     Maze, MazeChanged, MazePlugin, MazeTile, TrackIcon, TrackLight, colors, spawn_maze_tiles,
@@ -37,7 +35,7 @@ use bevy::prelude::*;
 /// The platform layer must:
 /// 1. Insert a `Maze` resource before `PostStartup`
 /// 2. Call `spawn_maze_tiles` in a `Startup` system
-/// 3. Populate `TrackHandles` with audio backend handles
+/// 3. Read `TrackAudioState` after `SpatialAudioSet` and push to its audio backend
 pub struct VvwGamePlugin;
 
 impl Plugin for VvwGamePlugin {

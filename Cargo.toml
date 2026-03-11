@@ -1,15 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/vvw-audio",
     "crates/vvw-core",
     "crates/vvw-game",
     "crates/vvw-light",
-    "crates/vvw-app",
     "crates/vvw-web",
     "crates/vvw-deploy",
 ]
-default-members = ["crates/vvw-app"]
+default-members = ["crates/vvw-deploy"]
 
 [workspace.package]
 version = "0.1.0"
@@ -24,13 +22,12 @@ readme = "README.md"
 
 [workspace.dependencies]
 # Internal crates
-vvw-audio = { path = "crates/vvw-audio" }
 vvw-core = { path = "crates/vvw-core" }
 vvw-game = { path = "crates/vvw-game" }
 vvw-light = { path = "crates/vvw-light" }
 
 # Core dependencies
-# default-features=false excludes bevy_audio (rodio/cpal 0.15) — we use kira directly.
+# default-features=false excludes bevy_audio — web player uses Web Audio API directly.
 # Features expand bevy's "2d" and "ui" presets but omit "audio" everywhere.
 # bevy's "2d" = default_app + default_platform + 2d_bevy_render + ui + scene + audio + picking
 # bevy's "ui" = default_app + default_platform + ui_api + ui_bevy_render + scene + audio + picking
@@ -48,8 +45,6 @@ bevy = { version = "0.18", default-features = false, features = [
 glam = "0.30"
 leafwing-input-manager = "0.20"
 avian2d = "0.5"
-kira = { version = "0.11", default-features = false, features = ["cpal", "wav", "mp3", "ogg", "flac"] }
-bevy_egui = "0.39.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
