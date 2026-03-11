@@ -5,6 +5,8 @@ use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 use vvw_light::PointLight2d;
 
+use vvw_core::physics::PhysicsConfig;
+
 use crate::maze::Maze;
 use crate::tiles::{TILE_SIZE, TilePos};
 
@@ -82,7 +84,7 @@ impl Plugin for PlayerPlugin {
 const PLAYER_COLOR: Color = Color::srgb(0.2, 0.7, 0.3);
 
 #[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value
-fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
+fn spawn_player(mut commands: Commands, maze: Res<Maze>, physics: Res<PhysicsConfig>) {
     // Find player start position from maze
     let start_pos = maze.find_player_start().unwrap_or(TilePos::new(1, 1));
     let world_pos = start_pos.to_world();
@@ -94,7 +96,7 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
             Player,
             PlayerMovement {
                 tile_pos: start_pos,
-                ..default()
+                speed: physics.player_speed,
             },
             Sprite {
                 color: PLAYER_COLOR,
@@ -106,10 +108,10 @@ fn spawn_player(mut commands: Commands, maze: Res<Maze>) {
             // Physics components — circle collider slides past wall corners
             RigidBody::Dynamic,
             Collider::circle(player_size / 2.0),
-            Friction::new(0.5),
-            Restitution::new(0.5),
-            LinearDamping(3.0),
-            AngularDamping(5.0),
+            Friction::new(physics.player_friction),
+            Restitution::new(physics.player_restitution),
+            LinearDamping(physics.player_linear_damping),
+            AngularDamping(physics.player_angular_damping),
         ))
         .with_child((
             PointLight2d {

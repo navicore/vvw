@@ -8,6 +8,7 @@ pub mod audio;
 pub mod lighting;
 pub mod maze;
 pub mod mazegen;
+pub mod physics;
 pub mod project;
 pub mod spatial;
 pub mod tiles;

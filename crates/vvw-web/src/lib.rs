@@ -87,10 +87,12 @@ async fn run() -> Result<(), JsValue> {
     // 6. Create and run Bevy app
     let maze = loaded.manifest.maze;
     let lighting = loaded.manifest.lighting;
+    let physics = loaded.manifest.physics;
 
     App::new()
         .insert_resource(maze)
         .insert_resource(lighting)
+        .insert_resource(physics)
         .insert_resource(TrackIdCounter(next_id))
         .insert_non_send_resource(engine)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -123,8 +125,9 @@ fn setup_web_maze(
     mut commands: Commands,
     maze: Res<Maze>,
     lighting: Res<vvw_light::LightingConfig>,
+    physics: Res<vvw_core::physics::PhysicsConfig>,
 ) {
-    spawn_maze_tiles(&mut commands, &maze, &lighting);
+    spawn_maze_tiles(&mut commands, &maze, &lighting, &physics);
 }
 
 /// Sync spatial audio state to the Web Audio API engine each frame.

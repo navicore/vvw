@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use vvw_core::lighting::LightingConfig;
 use vvw_core::mazegen::{MazeGenConfig, generate_initial_maze, grow_maze};
+use vvw_core::physics::PhysicsConfig;
 use vvw_core::project::{AlbumMetadata, ProjectManifest, TrackEntry, TrackMetadata};
 
 use crate::projects_dir;
@@ -166,6 +167,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
         rooms: state.rooms,
         maze_config,
         lighting: LightingConfig::default(),
+        physics: PhysicsConfig::default(),
         tracks,
         album: AlbumMetadata {
             title: metadata.album.title,

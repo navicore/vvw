@@ -6,6 +6,7 @@
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use vvw_core::physics::PhysicsConfig;
 use vvw_light::{LightOccluder2d, LightOccluderGrid, LightingConfig, PointLight2d};
 
 pub use vvw_core::maze::Maze;
@@ -59,7 +60,12 @@ pub mod colors {
 /// Spawn all tile sprites for the current maze state.
 ///
 /// Call this from your platform's startup system after inserting the `Maze` resource.
-pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze, lighting: &LightingConfig) {
+pub fn spawn_maze_tiles(
+    commands: &mut Commands,
+    maze: &Maze,
+    lighting: &LightingConfig,
+    physics: &PhysicsConfig,
+) {
     for y in 0..maze.height {
         for x in 0..maze.width {
             let tile = maze.get(x, y).unwrap_or_default();
@@ -86,8 +92,8 @@ pub fn spawn_maze_tiles(commands: &mut Commands, maze: &Maze, lighting: &Lightin
                 entity.insert((
                     RigidBody::Static,
                     Collider::rectangle(TILE_SIZE, TILE_SIZE),
-                    Friction::new(0.5),
-                    Restitution::new(0.4),
+                    Friction::new(physics.wall_friction),
+                    Restitution::new(physics.wall_restitution),
                     LightOccluder2d {
                         half_size: Vec2::splat(TILE_SIZE / 2.0),
                     },
@@ -149,6 +155,7 @@ fn respawn_maze_tiles(
     icon_query: Query<Entity, With<TrackIcon>>,
     maze: Res<Maze>,
     lighting: Res<LightingConfig>,
+    physics: Res<PhysicsConfig>,
 ) {
     // Only process if there are MazeChanged events
     let mut changed = false;
@@ -168,5 +175,5 @@ fn respawn_maze_tiles(
     }
 
     // Spawn fresh tiles from current maze
-    spawn_maze_tiles(&mut commands, &maze, &lighting);
+    spawn_maze_tiles(&mut commands, &maze, &lighting, &physics);
 }

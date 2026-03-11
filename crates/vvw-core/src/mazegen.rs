@@ -304,7 +304,7 @@ fn propose_room(rng: &mut impl Rng, state: &MazeGenState) -> Proposal {
 
     // Decide whether this corridor bends (L-shape) or runs straight.
     // Straight corridors preserve LOS between rooms, enabling audio mixing.
-    let use_bend = rng.gen_bool(state.config.l_bend_chance as f64);
+    let use_bend = rng.gen_bool(f64::from(state.config.l_bend_chance));
 
     let (leg1, leg2) = if use_bend {
         // Split corridor length into two legs for the L-shape.

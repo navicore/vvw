@@ -147,6 +147,7 @@ pub fn save_project(
         rooms: gen_state.rooms.clone(),
         maze_config: gen_state.config.clone(),
         lighting: lighting.clone(),
+        physics: vvw_core::physics::PhysicsConfig::default(),
         tracks,
         album: album.clone(),
     };
