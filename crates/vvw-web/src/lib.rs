@@ -55,6 +55,7 @@ async fn run() -> Result<(), JsValue> {
 
     // 2. Populate album info on the overlay
     ui::populate_album_info(&loaded.manifest.album);
+    ui::set_build_info();
 
     // 3. Set up Web Audio engine — tracks are registered but NOT connected yet
     let mut engine = WebAudioEngine::new()?;
@@ -228,7 +229,15 @@ fn setup_overlay_click(ctx: web_sys::AudioContext, flag: Arc<AtomicBool>) -> Res
 
     let overlay = document.get_element_by_id("overlay").ok_or("no overlay")?;
 
-    let closure = Closure::once(move || {
+    let activated = Arc::new(AtomicBool::new(false));
+
+    let activated_for_closure = Arc::clone(&activated);
+    let closure = Closure::<dyn FnMut()>::new(move || {
+        // Only fire once
+        if activated_for_closure.swap(true, Ordering::Relaxed) {
+            return;
+        }
+
         // Hide overlay and show header immediately (visual feedback)
         let _ = ui::hide_overlay();
         ui::show_header();
@@ -238,12 +247,20 @@ fn setup_overlay_click(ctx: web_sys::AudioContext, flag: Arc<AtomicBool>) -> Res
             web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
         }
 
+        // Focus the canvas so Bevy receives touch and keyboard events
+        if let Some(doc) = web_sys::window().and_then(|w| w.document())
+            && let Some(canvas) = doc.get_element_by_id("game-canvas")
+            && let Ok(html) = canvas.dyn_into::<web_sys::HtmlElement>()
+        {
+            let _ = html.focus();
+        }
+
         // Signal the Bevy system to activate the audio engine
         flag.store(true, Ordering::Relaxed);
     });
 
     overlay.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
-    closure.forget(); // Leak intentionally — the overlay click only fires once
+    closure.forget();
 
     Ok(())
 }

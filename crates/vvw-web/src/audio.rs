@@ -70,7 +70,6 @@ impl WebAudioEngine {
         audio_el.set_preload("auto");
         audio_el.set_cross_origin(Some("anonymous"));
         audio_el.set_attribute("playsinline", "")?;
-
         self.pending.push(PendingTrack { id, audio_el });
         Ok(())
     }

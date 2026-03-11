@@ -63,9 +63,9 @@ No new Bevy events needed — leafwing abstracts touch into the existing
 
 ## Checkpoints
 
-- [ ] Touch DPad zones produce `PlayerAction` events (log in console)
-- [ ] Player moves on iPad and Android via touch — same physics as keyboard
-- [ ] Keyboard input still works on desktop (no regression)
-- [ ] DPad overlay visible only on touch devices
-- [ ] Overlay doesn't block track-info foldout or album header
-- [ ] No new crate dependencies beyond what leafwing already provides
+- [x] Touch D-pad zones move the player (uses Bevy `Interaction`, not `PlayerAction`)
+- [x] Player moves on iPad and Android via touch — same physics as keyboard
+- [x] Keyboard input still works on desktop (no regression)
+- [x] D-pad overlay visible only on touch devices
+- [x] Overlay doesn't block track-info foldout or album header
+- [x] No new crate dependencies beyond what leafwing already provides
