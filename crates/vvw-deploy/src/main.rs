@@ -280,6 +280,8 @@ fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
                 &format!("{bucket}/{key}"),
                 "--file",
                 &file.to_string_lossy(),
+                "--content-type",
+                "audio/flac",
                 "--remote",
             ])
             .status()?;
