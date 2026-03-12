@@ -98,7 +98,7 @@ pub fn dispatch_track_hide() {
         return;
     };
 
-    if let Ok(event) = web_sys::CustomEvent::new("track-hide") {
+    if let Ok(event) = web_sys::Event::new("track-hide") {
         let _ = document.dispatch_event(&event);
     }
 }

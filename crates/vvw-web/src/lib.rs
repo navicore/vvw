@@ -203,10 +203,25 @@ fn update_nearest_track_info(
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
     mut current: ResMut<CurrentTrackInfo>,
 ) {
-    // Find the loudest audible track
+    // Find the loudest audible track. Hysteresis: a new track must exceed
+    // the current one by a margin to prevent rapid switching at equal gains.
+    const HYSTERESIS: f32 = 0.05;
     let mut best: Option<(usize, f32)> = None;
     for (icon, state) in &track_query {
-        if state.current_gain > 0.01 && (best.is_none() || state.current_gain > best.unwrap().1) {
+        if state.current_gain < 0.01 {
+            continue;
+        }
+        let dominated = if let Some((_, best_gain)) = best {
+            let margin = if current.track_id == Some(icon.track_id) {
+                0.0
+            } else {
+                HYSTERESIS
+            };
+            state.current_gain > best_gain + margin
+        } else {
+            true
+        };
+        if dominated {
             best = Some((icon.track_id, state.current_gain));
         }
     }
