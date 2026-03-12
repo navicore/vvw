@@ -50,6 +50,8 @@ pub struct WebAudioEngine {
     tracks: HashMap<usize, WebTrack>,
     /// Tracks waiting to be connected (before user gesture).
     pending: Vec<PendingTrack>,
+    /// Set after `activate()` — skip per-frame FFI state checks until then.
+    activated: bool,
 }
 
 impl WebAudioEngine {
@@ -60,6 +62,7 @@ impl WebAudioEngine {
             ctx,
             tracks: HashMap::new(),
             pending: Vec::new(),
+            activated: false,
         })
     }
 
@@ -106,6 +109,7 @@ impl WebAudioEngine {
             self.tracks
                 .insert(pending.id, WebTrack { gain_node, panner });
         }
+        self.activated = true;
         Ok(())
     }
 
@@ -133,6 +137,9 @@ impl WebAudioEngine {
     /// and not closed" rather than specifically `Suspended` so that unknown
     /// states (like `interrupted`) are also caught.
     pub fn needs_resume(&self) -> bool {
+        if !self.activated {
+            return false;
+        }
         let state = self.ctx.state();
         state != AudioContextState::Running && state != AudioContextState::Closed
     }
@@ -147,6 +154,8 @@ impl WebAudioEngine {
                     );
                 });
                 let _ = promise.catch(&on_err);
+                // NOTE: leaks ~few bytes of WASM linear memory per call.
+                // Acceptable here — resume() only fires on rare user gestures.
                 on_err.forget();
             }
             Err(e) => {
