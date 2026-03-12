@@ -49,8 +49,8 @@ Replace the colored square with a sprite sheet:
 - Commission a small sprite sheet (idle + 4-dir walk/run, ~32 frames total)
 - Procedurally generate a simple silhouette (stretch goal)
 
-**Asset loading:** Bevy's `AssetServer` loads images the same way on desktop
-and WASM (via Trunk's `dist/` copying). Place the sprite sheet in
+**Asset loading:** Bevy's `AssetServer` loads images in WASM via Trunk's
+`dist/` copying. Place the sprite sheet in
 `crates/vvw-web/assets/` (or a shared assets dir) and reference via
 `asset_server.load("player.png")`.
 

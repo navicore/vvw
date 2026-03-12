@@ -53,9 +53,9 @@ The player should feel like a music experience, not a raw game embed.
 
 ## Checkpoints
 
-- [ ] Album title and artist visible above the canvas during gameplay
-- [ ] Canvas is centered with dark surround, not stretched to viewport edges
-- [ ] Clicking a track icon in the maze opens a foldout with track title, artist, description
-- [ ] Clicking again (or another track) closes/swaps the foldout
-- [ ] Start screen overlay still works (click-to-start, autoplay unlock)
-- [ ] Deployed to Cloudflare Pages, no layout breakage
+- [x] Album title and artist visible above the canvas during gameplay
+- [x] Canvas is centered with dark surround, not stretched to viewport edges
+- [x] Clicking a track icon in the maze opens a foldout with track title, artist, description
+- [x] Clicking again (or another track) closes/swaps the foldout
+- [x] Start screen overlay still works (click-to-start, autoplay unlock)
+- [x] Deployed to Cloudflare Pages, no layout breakage

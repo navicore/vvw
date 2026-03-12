@@ -4,7 +4,7 @@
 
 Two UX problems to solve:
 
-1. **Why won't it move?** — New users land on the game after clicking the overlay, but the canvas doesn't have keyboard focus. Nothing visually tells them the game is waiting for interaction. The current "Click anywhere to start" overlay resumes audio but doesn't guarantee canvas focus.
+1. **Why won't it move?** — *(Partially solved: the overlay click handler now focuses the canvas and touch controls provide mobile input.)* New users still see a generic "Click anywhere to start" with no play/pause affordance.
 
 2. **Boss key** — Users need a way to quickly mute/pause audio without closing the tab. There's no control for this today.
 

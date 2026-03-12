@@ -43,11 +43,14 @@ vvw-game          Platform-independent Bevy plugin (VvwGamePlugin)
   PlayerPlugin    Avian2d body, leafwing-input-manager, movement
   SpatialAudio    compute_spatial_targets → interpolate → TrackAudioState
   CameraPlugin    Dead-zone follow camera + Lighting2dPlugin
+  TouchControls   D-pad overlay for mobile (Bevy Interaction hit testing)
 
 vvw-web           WASM web player (cdylib)
   WebAudioEngine  <audio> → MediaElementSource → GainNode → StereoPanner
   project.rs      Fetch project.ron + _config.json via Fetch API
-  ui.rs           Overlay (click-to-start), album info display
+  ui.rs           Overlay (click-to-start), album info, build version display
+  build.rs        Bakes VVW_BUILD_DATETIME into WASM at compile time
+  audio resume    Detects suspended/interrupted AudioContext, resumes on gesture
 
 vvw-deploy        CLI tool for album creation, assembly, and deployment
   create          Album creation: scan audio, $EDITOR metadata, maze gen

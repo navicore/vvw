@@ -8,6 +8,11 @@ The web player is deployed and functional on Cloudflare Pages. Albums are create
 
 Desktop app (`vvw-app`) and kira audio wrapper (`vvw-audio`) have been removed. The project is web-only.
 
+Recent additions:
+- **Touch controls** — D-pad overlay for mobile browsers (Android, iPad). Visible on first touch, hidden on desktop.
+- **Build version display** — Compile-time timestamp in album header for deploy diagnostics.
+- **Audio resume on wake** — Detects suspended/interrupted `AudioContext` (after backgrounding, device sleep, iOS Safari interruptions) and resumes on next user gesture.
+
 ## Next Up
 
 - **Playback controls**: Start/pause/mute button overlay (see `docs/design/playback-controls.md`)

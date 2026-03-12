@@ -1,5 +1,10 @@
 # VVW (Visual Virtual World) - Audio Exploration Game
 
+> **Historical document.** This was the founding design doc. The project has
+> since moved to web-only (no desktop app), replaced cpal with Web Audio API,
+> and uses continuous physics-based movement instead of grid-snapping. See
+> `docs/ARCHITECTURE.md` for the current architecture.
+
 ## Vision
 
 VVW is an audio exploration experience where users navigate virtual spaces to discover and interact with audio tracks. Unlike a DAW, there's no editing - just spatial exploration where proximity and visibility affect what you hear.
