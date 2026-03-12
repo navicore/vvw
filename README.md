@@ -15,18 +15,38 @@ You control a player navigating a tile-based maze. Scattered throughout the maze
 - [Trunk](https://trunkrs.dev/) (WASM build tool)
 - [wrangler](https://developers.cloudflare.com/workers/wrangler/) (Cloudflare CLI, for deploy)
 
-## Album Creation
+## Quickstart
 
 ```sh
-# Create an album from a directory of audio files
-just create-album ./my-audio-files/
+# 1. Create an album from a directory of audio files (opens $EDITOR for metadata)
+just create-album ~/my-audio-files/
 
-# Deploy: upload audio to R2, build WASM, assemble, deploy to Pages
-just deploy-album "My Album"
+# 2. Upload audio to R2 (only needed once, or when audio files change)
+just upload-audio my-album
 
-# Local preview
-just assemble-local "My Album"
+# 3. Deploy all albums to Cloudflare Pages (builds WASM, assembles all projects)
+just deploy
+```
+
+Each album is a saved project in `~/Library/Application Support/vvw/projects/`.
+Every `just deploy` builds and deploys **all** saved projects — Cloudflare Pages
+deploys are atomic full-site replacements, so all albums must be included.
+
+Audio lives on R2 (independent per-album uploads). The Pages deploy contains
+only the WASM player, album manifests, and config.
+
+### Other commands
+
+```sh
+# Edit album config (lighting, physics, etc.)
+$EDITOR ~/Library/Application\ Support/vvw/projects/my-album/project.ron
+
+# Local preview (includes audio in deploy dir)
+just assemble-local my-album
 just preview
+
+# Remove an album from deploy and R2
+just delete-album my-album
 ```
 
 ### Controls
