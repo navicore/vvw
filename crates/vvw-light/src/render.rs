@@ -156,9 +156,11 @@ fn update_lightmap(
         return;
     }
 
-    // Compute the visible tile rect from the camera viewport
-    let (view_min_x, view_max_x, view_min_y, view_max_y) = if let Some((cam_tf, projection)) =
-        camera_query.iter().next()
+    // Compute the visible tile rect from the camera viewport.
+    // Uses single() so a duplicate Camera2d is caught immediately rather than
+    // silently picking an arbitrary entity.
+    let (view_min_x, view_max_x, view_min_y, view_max_y) = if let Ok((cam_tf, projection)) =
+        camera_query.single()
         && let Projection::Orthographic(ortho) = projection
     {
         let cam_pos = cam_tf.translation();
@@ -168,12 +170,27 @@ fn update_lightmap(
         let bottom = cam_pos.y + ortho.area.min.y;
         let top = cam_pos.y + ortho.area.max.y;
 
+        let max_tile_x = w as f32 - 1.0;
+        let max_tile_y = h as f32 - 1.0;
+
+        // Camera entirely off-map — nothing to light
+        if right < 0.0
+            || left > max_tile_x * tile_size
+            || top < 0.0
+            || bottom > max_tile_y * tile_size
+        {
+            return;
+        }
+
         // Convert world coords to tile coords, with 1-tile padding for bilinear filtering
         let padding = 1.0;
         let vmin_x = (left / tile_size - padding).floor().max(0.0) as usize;
-        let vmax_x = (right / tile_size + padding).ceil().min(w as f32 - 1.0) as usize;
+        let vmax_x = (right / tile_size + padding)
+            .ceil()
+            .max(0.0)
+            .min(max_tile_x) as usize;
         let vmin_y = (bottom / tile_size - padding).floor().max(0.0) as usize;
-        let vmax_y = (top / tile_size + padding).ceil().min(h as f32 - 1.0) as usize;
+        let vmax_y = (top / tile_size + padding).ceil().max(0.0).min(max_tile_y) as usize;
         (vmin_x, vmax_x, vmin_y, vmax_y)
     } else {
         // No camera — fall back to full grid
@@ -204,7 +221,12 @@ fn update_lightmap(
         let fmin_y = (light_ty - radius_tiles).floor().max(view_min_y as f32);
         let fmax_y = (light_ty + radius_tiles).ceil().min(view_max_y as f32);
 
-        if fmax_x < 0.0 || fmax_y < 0.0 || fmin_x > view_max_x as f32 || fmin_y > view_max_y as f32
+        if fmax_x < 0.0
+            || fmax_y < 0.0
+            || fmin_x > view_max_x as f32
+            || fmin_y > view_max_y as f32
+            || fmax_x < fmin_x
+            || fmax_y < fmin_y
         {
             continue;
         }
