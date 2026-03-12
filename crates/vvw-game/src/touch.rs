@@ -4,7 +4,11 @@ use avian2d::prelude::*;
 use bevy::input::touch::Touches;
 use bevy::prelude::*;
 
-use crate::player::{Player, PlayerMovement, handle_player_input};
+use vvw_core::lighting::{LightMode, LightingConfig};
+
+use crate::player::{
+    Player, PlayerHeading, PlayerMovement, ROTATION_SPEED, handle_player_input, sync_player_light,
+};
 
 /// Plugin for touch-based movement controls
 pub struct TouchControlsPlugin;
@@ -17,7 +21,9 @@ impl Plugin for TouchControlsPlugin {
                 Update,
                 (
                     detect_touch_device,
-                    handle_touch_input.after(handle_player_input),
+                    handle_touch_input
+                        .after(handle_player_input)
+                        .before(sync_player_light),
                     update_dpad_visuals,
                 )
                     .chain(),
@@ -168,28 +174,59 @@ fn detect_touch_device(
 fn handle_touch_input(
     time: Res<Time>,
     state: Res<TouchState>,
+    lighting: Res<LightingConfig>,
     button_query: Query<(&Interaction, &DPadButton)>,
-    mut player_query: Query<(&PlayerMovement, &mut LinearVelocity), With<Player>>,
+    mut player_query: Query<
+        (&PlayerMovement, &mut LinearVelocity, &mut PlayerHeading),
+        With<Player>,
+    >,
 ) {
     if !state.touch_detected {
         return;
     }
 
-    let mut direction = Vec2::ZERO;
-
+    let mut pressed = Vec2::ZERO;
     for (interaction, button) in &button_query {
         if *interaction == Interaction::Pressed {
-            direction += button.direction;
+            pressed += button.direction;
         }
     }
 
-    if direction != Vec2::ZERO {
-        direction = direction.normalize();
-    }
-
     let dt = time.delta_secs();
-    for (movement, mut velocity) in &mut player_query {
-        velocity.0 += direction * movement.speed * dt;
+    let is_flashlight = lighting.player_light_mode == LightMode::Flashlight;
+
+    for (movement, mut velocity, mut heading) in &mut player_query {
+        if is_flashlight {
+            // Left/Right rotate heading, Up/Down move along heading
+            if pressed.x < 0.0 {
+                let angle = ROTATION_SPEED * dt;
+                heading.0 = Vec2::from_angle(angle).rotate(heading.0);
+            }
+            if pressed.x > 0.0 {
+                let angle = -ROTATION_SPEED * dt;
+                heading.0 = Vec2::from_angle(angle).rotate(heading.0);
+            }
+            // Prevent float drift from accumulating over long sessions
+            heading.0 = heading.0.normalize_or_zero();
+
+            let mut forward = 0.0;
+            if pressed.y > 0.0 {
+                forward += 1.0;
+            }
+            if pressed.y < 0.0 {
+                forward -= 1.0;
+            }
+
+            velocity.0 += heading.0 * forward * movement.speed * dt;
+        } else {
+            // Lantern mode: cardinal direction movement
+            let direction = if pressed == Vec2::ZERO {
+                Vec2::ZERO
+            } else {
+                pressed.normalize()
+            };
+            velocity.0 += direction * movement.speed * dt;
+        }
     }
 }
 
