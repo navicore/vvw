@@ -43,7 +43,7 @@ struct DPadButton {
 
 const DPAD_SIZE: f32 = 150.0;
 const BUTTON_SIZE: f32 = 48.0;
-const DPAD_MARGIN_LEFT: f32 = 20.0;
+const DPAD_MARGIN_RIGHT: f32 = 20.0;
 /// Extra bottom margin to clear phone browser navigation/gesture bars
 const DPAD_MARGIN_BOTTOM: f32 = 80.0;
 const DPAD_ALPHA: f32 = 0.25;
@@ -55,7 +55,7 @@ fn spawn_dpad_overlay(mut commands: Commands) {
             DPadOverlay,
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(DPAD_MARGIN_LEFT),
+                right: Val::Px(DPAD_MARGIN_RIGHT),
                 bottom: Val::Px(DPAD_MARGIN_BOTTOM),
                 width: Val::Px(DPAD_SIZE),
                 height: Val::Px(DPAD_SIZE),
