@@ -30,13 +30,15 @@ vvw-core          Platform-agnostic types and algorithms (no Bevy)
   mazegen         Procedural maze generation (room + corridor growth)
   project         ProjectManifest serde, AlbumMetadata, TrackMetadata
   physics         PhysicsConfig (player speed, friction, restitution, damping)
-  lighting        LightingConfig (ambient, player, track light params)
+  lighting        LightingConfig (ambient, player, track light params, LightMode)
 
 vvw-light         2D lighting plugin for Bevy
   PointLight2d    Per-entity point light with intensity, radius, falloff
+                  Optional direction + half_angle_cos for cone (flashlight) mode
   AmbientLight2d  Global ambient brightness
   LightOccluder   Per-wall-tile occluder
   OccluderGrid    Grid-level LOS cache for lighting
+  render          Viewport-culled lightmap: only tiles visible to camera are computed
 
 vvw-game          Platform-independent Bevy plugin (VvwGamePlugin)
   MazePlugin      Tile rendering, wall colliders, occluder grid sync

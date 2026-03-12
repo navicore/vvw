@@ -12,11 +12,12 @@ Recent additions:
 - **Touch controls** — D-pad overlay for mobile browsers (Android, iPad). Visible on first touch, hidden on desktop.
 - **Build version display** — Compile-time timestamp in album header for deploy diagnostics.
 - **Audio resume on wake** — Detects suspended/interrupted `AudioContext` (after backgrounding, device sleep, iOS Safari interruptions) and resumes on next user gesture.
+- **Lightmap viewport culling** — Lighting computation clipped to camera viewport, reducing raycast work by ~97% on large mazes.
+- **Directional flashlight** — Per-album configurable cone light mode (`player_light_mode: Flashlight` in `project.ron`). Left/Right rotate heading, Up/Down move along heading. Soft-edge falloff on cone boundary.
 
 ## Next Up
 
 - **Playback controls**: Start/pause/mute button overlay (see `docs/design/playback-controls.md`)
-- **Lightmap viewport culling**: Clip lightmap computation to camera viewport (see `docs/design/lightmap-viewport-culling.md`)
 - **Player avatar**: Improve the player sprite rendering
 
 ## Known Limitations

@@ -7,8 +7,7 @@
 //! - Custom 2D lighting (vvw-light)
 //!
 //! Platform-specific code (audio backends, UI, file I/O) lives in the app layer.
-//! The platform inserts the `Maze` resource and populates `TrackHandles`;
-//! this plugin handles everything else.
+//! The platform inserts the `Maze` resource; this plugin handles everything else.
 
 mod audio;
 mod camera;
