@@ -125,7 +125,16 @@ fn check_grid_resize(
 }
 
 /// Compute per-tile brightness and write to the light map texture every frame.
-#[allow(clippy::needless_pass_by_value, clippy::similar_names)]
+///
+/// Only tiles within the camera viewport (plus a 1-tile border for bilinear
+/// filtering) are computed and written. Tiles outside the viewport are filled
+/// with the ambient darkness value.
+#[allow(
+    clippy::needless_pass_by_value,
+    clippy::similar_names,
+    clippy::too_many_arguments,
+    clippy::too_many_lines
+)]
 fn update_lightmap(
     grid: Res<LightOccluderGrid>,
     ambient: Res<AmbientLight2d>,
@@ -133,6 +142,7 @@ fn update_lightmap(
     mut images: ResMut<Assets<Image>>,
     light_query: Query<(&PointLight2d, &ChildOf)>,
     transform_query: Query<&GlobalTransform>,
+    camera_query: Query<(&GlobalTransform, &Projection), With<Camera2d>>,
     mut buf: ResMut<BrightnessBuffer>,
 ) {
     let w = grid.width;
@@ -146,13 +156,55 @@ fn update_lightmap(
         return;
     }
 
-    // Reuse the brightness buffer; resize only when the grid changes
+    // Compute the visible tile rect from the camera viewport.
+    // Uses single() so a duplicate Camera2d is caught immediately rather than
+    // silently picking an arbitrary entity.
+    let (view_min_x, view_max_x, view_min_y, view_max_y) = if let Ok((cam_tf, projection)) =
+        camera_query.single()
+        && let Projection::Orthographic(ortho) = projection
+    {
+        let cam_pos = cam_tf.translation();
+        // ortho.area is in camera-local view-space; add camera position for world coords
+        let left = cam_pos.x + ortho.area.min.x;
+        let right = cam_pos.x + ortho.area.max.x;
+        let bottom = cam_pos.y + ortho.area.min.y;
+        let top = cam_pos.y + ortho.area.max.y;
+
+        let max_tile_x = w as f32 - 1.0;
+        let max_tile_y = h as f32 - 1.0;
+
+        // Camera entirely off-map — nothing to light
+        if right < 0.0
+            || left > max_tile_x * tile_size
+            || top < 0.0
+            || bottom > max_tile_y * tile_size
+        {
+            return;
+        }
+
+        // Convert world coords to tile coords, with 1-tile padding for bilinear filtering
+        let padding = 1.0;
+        let vmin_x = (left / tile_size - padding).floor().max(0.0) as usize;
+        let vmax_x = (right / tile_size + padding)
+            .ceil()
+            .max(0.0)
+            .min(max_tile_x) as usize;
+        let vmin_y = (bottom / tile_size - padding).floor().max(0.0) as usize;
+        let vmax_y = (top / tile_size + padding).ceil().max(0.0).min(max_tile_y) as usize;
+        (vmin_x, vmax_x, vmin_y, vmax_y)
+    } else {
+        // No camera — fall back to full grid
+        (0, w.saturating_sub(1), 0, h.saturating_sub(1))
+    };
+
+    // Reuse the brightness buffer; resize only when the grid changes.
+    // Fill entire buffer with ambient so out-of-viewport tiles get correct alpha.
     let total = w * h;
     buf.0.resize(total, 0.0);
     buf.0.fill(ambient.brightness);
     let brightness = &mut buf.0;
 
-    // Accumulate light contributions
+    // Accumulate light contributions (clamped to viewport)
     for (light, child_of) in &light_query {
         let parent = child_of.parent();
         let Ok(global_tf) = transform_query.get(parent) else {
@@ -163,13 +215,19 @@ fn update_lightmap(
         let light_ty = world_pos.y / tile_size;
         let radius_tiles = light.radius / tile_size;
 
-        // Bounding box in tile coords (clamp as floats to avoid i32 overflow)
-        let fmin_x = (light_tx - radius_tiles).floor().max(0.0);
-        let fmax_x = (light_tx + radius_tiles).ceil().min((w - 1) as f32);
-        let fmin_y = (light_ty - radius_tiles).floor().max(0.0);
-        let fmax_y = (light_ty + radius_tiles).ceil().min((h - 1) as f32);
+        // Bounding box in tile coords, intersected with the viewport rect
+        let fmin_x = (light_tx - radius_tiles).floor().max(view_min_x as f32);
+        let fmax_x = (light_tx + radius_tiles).ceil().min(view_max_x as f32);
+        let fmin_y = (light_ty - radius_tiles).floor().max(view_min_y as f32);
+        let fmax_y = (light_ty + radius_tiles).ceil().min(view_max_y as f32);
 
-        if fmax_x < 0.0 || fmax_y < 0.0 || fmin_x >= w as f32 || fmin_y >= h as f32 {
+        if fmax_x < 0.0
+            || fmax_y < 0.0
+            || fmin_x > view_max_x as f32
+            || fmin_y > view_max_y as f32
+            || fmax_x < fmin_x
+            || fmax_y < fmin_y
+        {
             continue;
         }
 
