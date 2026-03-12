@@ -51,8 +51,8 @@ impl Plugin for MazePlugin {
 pub mod colors {
     use bevy::prelude::*;
 
-    pub const FLOOR: Color = Color::srgb(0.15, 0.15, 0.2);
-    pub const WALL: Color = Color::srgb(0.4, 0.35, 0.5);
+    pub const FLOOR: Color = Color::srgb(0.4, 0.35, 0.5);
+    pub const WALL: Color = Color::srgb(0.15, 0.15, 0.2);
     pub const PLAYER_START: Color = Color::srgb(0.2, 0.3, 0.2);
     pub const TRACK_ICON: Color = Color::srgb(0.8, 0.4, 0.2);
 }
