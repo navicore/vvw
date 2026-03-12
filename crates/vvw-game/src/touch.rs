@@ -6,7 +6,9 @@ use bevy::prelude::*;
 
 use vvw_core::lighting::{LightMode, LightingConfig};
 
-use crate::player::{Player, PlayerHeading, PlayerMovement, ROTATION_SPEED, handle_player_input};
+use crate::player::{
+    Player, PlayerHeading, PlayerMovement, ROTATION_SPEED, handle_player_input, sync_player_light,
+};
 
 /// Plugin for touch-based movement controls
 pub struct TouchControlsPlugin;
@@ -19,7 +21,9 @@ impl Plugin for TouchControlsPlugin {
                 Update,
                 (
                     detect_touch_device,
-                    handle_touch_input.after(handle_player_input),
+                    handle_touch_input
+                        .after(handle_player_input)
+                        .before(sync_player_light),
                     update_dpad_visuals,
                 )
                     .chain(),
@@ -202,6 +206,8 @@ fn handle_touch_input(
                 let angle = -ROTATION_SPEED * dt;
                 heading.0 = Vec2::from_angle(angle).rotate(heading.0);
             }
+            // Prevent float drift from accumulating over long sessions
+            heading.0 = heading.0.normalize_or_zero();
 
             let mut forward = 0.0;
             if pressed.y > 0.0 {

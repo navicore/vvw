@@ -261,7 +261,8 @@ fn update_lightmap(
                                 continue;
                             }
                             // Soft edge: fade from full at center to 0 at cone boundary
-                            let edge_softness = 0.15;
+                            let full_range = (1.0 - half_cos).max(1e-4);
+                            let edge_softness = full_range * 0.3;
                             ((dot - half_cos) / edge_softness).min(1.0)
                         }
                     } else {

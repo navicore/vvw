@@ -179,6 +179,8 @@ pub fn handle_player_input(
                 let angle = -ROTATION_SPEED * dt;
                 heading.0 = Vec2::from_angle(angle).rotate(heading.0);
             }
+            // Prevent float drift from accumulating over long sessions
+            heading.0 = heading.0.normalize_or_zero();
 
             let mut forward = 0.0;
             if action_state.pressed(&PlayerAction::Up) {
@@ -228,7 +230,7 @@ fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player
 
 /// Sync the player's heading into the flashlight direction and sprite rotation.
 #[allow(clippy::needless_pass_by_value)]
-fn sync_player_light(
+pub fn sync_player_light(
     player_query: Query<(&PlayerHeading, &Children), With<Player>>,
     mut light_query: Query<&mut PointLight2d, With<PlayerLight>>,
 ) {

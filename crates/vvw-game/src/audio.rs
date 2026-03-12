@@ -137,6 +137,9 @@ fn apply_lighting_config(
         light.intensity = config.player_intensity;
         light.radius = config.player_radius;
         light.falloff = config.player_falloff;
+        if light.direction.is_some() {
+            light.half_angle_cos = Some(config.flashlight_half_angle.to_radians().cos());
+        }
     }
     for mut light in &mut track_lights {
         light.intensity = config.track_intensity;
