@@ -249,12 +249,31 @@ fn update_lightmap(
                     continue;
                 }
 
+                // Cone check: skip tiles outside the flashlight cone
+                let cone_factor =
+                    if let (Some(dir), Some(half_cos)) = (light.direction, light.half_angle_cos) {
+                        if dist < 0.001 {
+                            1.0 // Light source tile is always lit
+                        } else {
+                            let to_tile = Vec2::new(dx, dy) / dist;
+                            let dot = dir.dot(to_tile);
+                            if dot < half_cos {
+                                continue;
+                            }
+                            // Soft edge: fade from full at center to 0 at cone boundary
+                            let edge_softness = 0.15;
+                            ((dot - half_cos) / edge_softness).min(1.0)
+                        }
+                    } else {
+                        1.0
+                    };
+
                 if !bresenham_visible(&grid, light_ix, light_iy, tx as i32, ty as i32) {
                     continue;
                 }
 
                 let falloff_factor = (1.0 - dist / radius_tiles).powf(light.falloff);
-                let contribution = light.intensity * falloff_factor;
+                let contribution = light.intensity * falloff_factor * cone_factor;
                 let idx = ty * w + tx;
                 if let Some(cell) = brightness.get_mut(idx) {
                     *cell = (*cell + contribution).min(1.0);

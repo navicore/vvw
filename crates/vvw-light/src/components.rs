@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 pub use vvw_core::lighting::LightingConfig;
 
-/// A 2D point light that emits light in a circular radius.
+/// A 2D point light that emits light in a circular radius or directional cone.
 /// Attach as a child entity of the light source.
 #[derive(Component, Debug, Clone)]
 pub struct PointLight2d {
@@ -16,6 +16,11 @@ pub struct PointLight2d {
     pub radius: f32,
     /// Falloff exponent (higher = sharper edges)
     pub falloff: f32,
+    /// Direction the light faces. `None` = omnidirectional (lantern).
+    pub direction: Option<Vec2>,
+    /// Cosine of the cone half-angle. Tiles with a dot product below this
+    /// are outside the cone. `None` = omnidirectional.
+    pub half_angle_cos: Option<f32>,
 }
 
 impl Default for PointLight2d {
@@ -25,6 +30,8 @@ impl Default for PointLight2d {
             intensity: 1.0,
             radius: 200.0,
             falloff: 2.0,
+            direction: None,
+            half_angle_cos: None,
         }
     }
 }

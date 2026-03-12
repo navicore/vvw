@@ -120,6 +120,7 @@ pub fn spawn_maze_tiles(
                             intensity: 0.4,
                             radius: 100.0,
                             falloff: 0.6,
+                            ..default()
                         },
                         TrackLight,
                     ));
