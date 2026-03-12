@@ -31,9 +31,9 @@ pub fn assemble(
     }
     std::fs::create_dir_all(output)?;
 
-    // Copy index.html
-    std::fs::copy(dist.join("index.html"), output.join("index.html"))
-        .context("Failed to copy index.html")?;
+    // No root index.html — only album subdirs get one.
+    // A root index.html acts as Cloudflare Pages' SPA catch-all,
+    // swallowing requests for project.ron and _config.json.
 
     // Copy .js and .wasm files to output root
     for entry in std::fs::read_dir(&dist)? {
@@ -92,10 +92,17 @@ pub fn assemble(
         println!("  Audio URL: {url}");
     }
 
-    // Write Cloudflare Pages _headers to set correct MIME types
+    // Write Cloudflare Pages _headers for MIME types and caching.
+    // WASM/JS are content-hashed (immutable). Config and manifests revalidate
+    // every load to prevent stale edge-cache from breaking audio after redeploy.
     std::fs::write(
         output.join("_headers"),
-        "/*.wasm\n  Content-Type: application/wasm\n",
+        "\
+/*.wasm\n  Content-Type: application/wasm\n  Cache-Control: public, max-age=31536000, immutable\n\
+\n/*.js\n  Cache-Control: public, max-age=31536000, immutable\n\
+\n/_config.json\n  Cache-Control: no-cache\n\
+\n/*/project.ron\n  Cache-Control: no-cache\n\
+\n/*/index.html\n  Cache-Control: no-cache\n",
     )
     .context("Failed to write _headers")?;
 

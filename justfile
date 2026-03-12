@@ -132,10 +132,15 @@ assemble-local ALBUM OUTPUT="deploy":
     just build-web
     cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}}
 
-# Assemble web player + album for Cloudflare (audio served from R2)
+# Assemble web player + specific album for Cloudflare (audio served from R2)
 assemble ALBUM OUTPUT="deploy":
     just build-web
     cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}} --audio-base-url {{R2_URL}}
+
+# Assemble web player + ALL saved albums for Cloudflare
+assemble-all OUTPUT="deploy":
+    just build-web
+    cargo run -p vvw-deploy --release -- assemble --all --output {{OUTPUT}} --audio-base-url {{R2_URL}}
 
 # Upload audio files to R2
 upload-audio ALBUM:
@@ -149,10 +154,9 @@ preview OUTPUT="deploy":
 deploy-pages PROJECT="vvw" OUTPUT="deploy":
     cargo run -p vvw-deploy --release -- deploy --output {{OUTPUT}} --project {{PROJECT}}
 
-# Deploy album: upload audio to R2, assemble, deploy to Pages
-deploy-album ALBUM:
-    just upload-audio {{ALBUM}}
-    just assemble {{ALBUM}}
+# Deploy all albums: assemble all saved projects and deploy to Pages
+deploy:
+    just assemble-all
     just deploy-pages
 
 # Clean an album from the deploy directory
