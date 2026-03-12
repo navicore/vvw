@@ -11,8 +11,9 @@
 
 use std::collections::HashMap;
 
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
-use web_sys::{AudioContext, GainNode, HtmlAudioElement};
+use web_sys::{AudioContext, AudioContextState, GainNode, HtmlAudioElement};
 
 /// Panner abstraction: `StereoPannerNode` where supported, no-op otherwise.
 enum Panner {
@@ -49,6 +50,8 @@ pub struct WebAudioEngine {
     tracks: HashMap<usize, WebTrack>,
     /// Tracks waiting to be connected (before user gesture).
     pending: Vec<PendingTrack>,
+    /// Set after `activate()` — skip per-frame FFI state checks until then.
+    activated: bool,
 }
 
 impl WebAudioEngine {
@@ -59,6 +62,7 @@ impl WebAudioEngine {
             ctx,
             tracks: HashMap::new(),
             pending: Vec::new(),
+            activated: false,
         })
     }
 
@@ -105,6 +109,7 @@ impl WebAudioEngine {
             self.tracks
                 .insert(pending.id, WebTrack { gain_node, panner });
         }
+        self.activated = true;
         Ok(())
     }
 
@@ -124,6 +129,38 @@ impl WebAudioEngine {
     pub fn set_panning(&self, id: usize, pan: f32) {
         if let Some(track) = self.tracks.get(&id) {
             track.panner.set_pan(pan);
+        }
+    }
+
+    /// Returns true if the `AudioContext` needs resuming (suspended, or iOS
+    /// Safari's non-standard "interrupted" state). We check for "not running
+    /// and not closed" rather than specifically `Suspended` so that unknown
+    /// states (like `interrupted`) are also caught.
+    pub fn needs_resume(&self) -> bool {
+        if !self.activated {
+            return false;
+        }
+        let state = self.ctx.state();
+        state != AudioContextState::Running && state != AudioContextState::Closed
+    }
+
+    /// Resume a suspended `AudioContext`. Must be called from a user gesture.
+    pub fn resume(&self) {
+        match self.ctx.resume() {
+            Ok(promise) => {
+                let on_err = Closure::once(move |e: JsValue| {
+                    web_sys::console::error_1(
+                        &format!("AudioContext resume rejected: {e:?}").into(),
+                    );
+                });
+                let _ = promise.catch(&on_err);
+                // NOTE: leaks ~few bytes of WASM linear memory per call.
+                // Acceptable here — resume() only fires on rare user gestures.
+                on_err.forget();
+            }
+            Err(e) => {
+                web_sys::console::error_1(&format!("audio resume error: {e:?}").into());
+            }
         }
     }
 }

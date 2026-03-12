@@ -13,6 +13,7 @@ mod ui;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use bevy::input::touch::Touches;
 use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
@@ -120,6 +121,7 @@ async fn run() -> Result<(), JsValue> {
             Update,
             (
                 activate_audio_on_click,
+                resume_suspended_audio.after(activate_audio_on_click),
                 web_audio_sync.after(SpatialAudioSet),
                 handle_track_clicks.after(SpatialAudioSet),
             ),
@@ -149,6 +151,26 @@ fn activate_audio_on_click(flag: Res<AudioActivationFlag>, mut engine: NonSendMu
         if let Err(e) = engine.activate() {
             web_sys::console::error_1(&format!("Audio activation failed: {e:?}").into());
         }
+    }
+}
+
+/// Resume the `AudioContext` if it was suspended by the browser (e.g. after
+/// backgrounding, device sleep, or tab switch). Browsers require a user gesture,
+/// so we only call resume when a click or touch is detected.
+#[allow(clippy::needless_pass_by_value)]
+fn resume_suspended_audio(
+    engine: NonSend<WebAudioEngine>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
+) {
+    if !engine.needs_resume() {
+        return;
+    }
+    let has_gesture =
+        mouse.just_pressed(MouseButton::Left) || touches.iter_just_pressed().next().is_some();
+    if has_gesture {
+        web_sys::console::log_1(&"Resuming suspended AudioContext...".into());
+        engine.resume();
     }
 }
 
