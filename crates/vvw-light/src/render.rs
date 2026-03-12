@@ -157,28 +157,23 @@ fn update_lightmap(
     }
 
     // Compute the visible tile rect from the camera viewport
-    let (view_min_x, view_max_x, view_min_y, view_max_y) = if let Ok((cam_tf, projection)) =
-        camera_query.single()
+    let (view_min_x, view_max_x, view_min_y, view_max_y) = if let Some((cam_tf, projection)) =
+        camera_query.iter().next()
         && let Projection::Orthographic(ortho) = projection
     {
         let cam_pos = cam_tf.translation();
-        let half_w = (ortho.area.max.x - ortho.area.min.x) / 2.0;
-        let half_h = (ortho.area.max.y - ortho.area.min.y) / 2.0;
+        // ortho.area is in camera-local view-space; add camera position for world coords
+        let left = cam_pos.x + ortho.area.min.x;
+        let right = cam_pos.x + ortho.area.max.x;
+        let bottom = cam_pos.y + ortho.area.min.y;
+        let top = cam_pos.y + ortho.area.max.y;
 
         // Convert world coords to tile coords, with 1-tile padding for bilinear filtering
         let padding = 1.0;
-        let vmin_x = ((cam_pos.x - half_w) / tile_size - padding)
-            .floor()
-            .max(0.0) as usize;
-        let vmax_x = ((cam_pos.x + half_w) / tile_size + padding)
-            .ceil()
-            .min(w as f32 - 1.0) as usize;
-        let vmin_y = ((cam_pos.y - half_h) / tile_size - padding)
-            .floor()
-            .max(0.0) as usize;
-        let vmax_y = ((cam_pos.y + half_h) / tile_size + padding)
-            .ceil()
-            .min(h as f32 - 1.0) as usize;
+        let vmin_x = (left / tile_size - padding).floor().max(0.0) as usize;
+        let vmax_x = (right / tile_size + padding).ceil().min(w as f32 - 1.0) as usize;
+        let vmin_y = (bottom / tile_size - padding).floor().max(0.0) as usize;
+        let vmax_y = (top / tile_size + padding).ceil().min(h as f32 - 1.0) as usize;
         (vmin_x, vmax_x, vmin_y, vmax_y)
     } else {
         // No camera — fall back to full grid
