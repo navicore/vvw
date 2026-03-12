@@ -56,20 +56,25 @@
             overflow: hidden;
             position: relative;
         }
-        canvas { display: block; max-width: 100%; max-height: 100%; }
+        canvas { display: block; max-width: 100%; max-height: 100%; position: relative; z-index: 1; }
 
-        /* Track info foldout */
+        /* Track info bar — overlays bottom of canvas, no layout shift */
         #track-info {
-            flex-shrink: 0;
-            background: #111122;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(13, 13, 26, 0.9);
             border-top: 1px solid #1a1a2e;
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease;
+            opacity: 0;
+            transform: translateY(100%);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+            z-index: 2;
         }
-        #track-info.open { max-height: 200px; }
+        #track-info.open { opacity: 1; transform: translateY(0); }
         #track-info-inner {
-            padding: 0.75rem 1.5rem;
+            padding: 0.5rem 1.5rem;
         }
         #track-info .track-title {
             margin: 0;
@@ -99,19 +104,8 @@
             color: #6688cc;
             text-decoration: none;
         }
+        #track-info .track-links a { pointer-events: auto; }
         #track-info .track-links a:hover { text-decoration: underline; }
-        #track-info .close-btn {
-            position: absolute;
-            top: 0.5rem;
-            right: 1rem;
-            background: none;
-            border: none;
-            color: #666;
-            font-size: 1.2rem;
-            cursor: pointer;
-        }
-        #track-info .close-btn:hover { color: #aaa; }
-
         /* Hidden container for track metadata injected by WASM */
         #track-data { display: none; }
 
@@ -140,15 +134,13 @@
 
         <div id="canvas-container">
             <canvas id="game-canvas"></canvas>
-        </div>
-
-        <div id="track-info">
-            <div id="track-info-inner" style="position: relative;">
-                <button class="close-btn" id="track-info-close">&times;</button>
-                <h3 class="track-title" id="track-info-title"></h3>
-                <p class="track-artist" id="track-info-artist"></p>
-                <p class="track-description" id="track-info-description"></p>
-                <ul class="track-links" id="track-info-links"></ul>
+            <div id="track-info">
+                <div id="track-info-inner">
+                    <h3 class="track-title" id="track-info-title"></h3>
+                    <p class="track-artist" id="track-info-artist"></p>
+                    <p class="track-description" id="track-info-description"></p>
+                    <ul class="track-links" id="track-info-links"></ul>
+                </div>
             </div>
         </div>
     </div>
@@ -163,11 +155,9 @@
     </div>
 
     <script>
-        // Track info foldout logic
+        // Track info bar — shows the loudest audible track automatically
         (function() {
-            var currentTrackId = null;
             var panel = document.getElementById('track-info');
-            var closeBtn = document.getElementById('track-info-close');
 
             function findTrackData(trackId) {
                 var el = document.querySelector('#track-data [data-track-id="' + trackId + '"]');
@@ -176,7 +166,6 @@
                     title: el.getAttribute('data-title') || '',
                     artist: el.getAttribute('data-artist') || '',
                     description: el.getAttribute('data-description') || '',
-                    lyrics: el.getAttribute('data-lyrics') || '',
                     links: el.getAttribute('data-links') || ''
                 };
             }
@@ -213,27 +202,15 @@
                 }
                 linksEl.style.display = linksEl.children.length ? '' : 'none';
 
-                currentTrackId = trackId;
                 panel.classList.add('open');
             }
 
-            function hideTrack() {
-                panel.classList.remove('open');
-                currentTrackId = null;
-            }
-
             document.addEventListener('track-select', function(e) {
-                var trackId = String(e.detail);
-                if (currentTrackId === trackId) {
-                    hideTrack();
-                } else {
-                    showTrack(trackId);
-                }
+                showTrack(String(e.detail));
             });
 
-            closeBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                hideTrack();
+            document.addEventListener('track-hide', function() {
+                panel.classList.remove('open');
             });
         })();
     </script>

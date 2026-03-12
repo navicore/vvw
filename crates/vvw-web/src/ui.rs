@@ -89,6 +89,20 @@ pub fn dispatch_track_select(track_id: usize) {
     }
 }
 
+/// Dispatch a custom DOM event to hide the track info foldout
+pub fn dispatch_track_hide() {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+
+    if let Ok(event) = web_sys::Event::new("track-hide") {
+        let _ = document.dispatch_event(&event);
+    }
+}
+
 /// Set the build datetime in the header
 pub fn set_build_info() {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {

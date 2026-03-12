@@ -18,7 +18,7 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    Maze, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
+    Maze, SpatialAudioSet, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
     spawn_maze_tiles,
 };
 
@@ -104,6 +104,7 @@ async fn run() -> Result<(), JsValue> {
         .insert_resource(physics)
         .insert_resource(TrackIdCounter(next_id))
         .insert_resource(AudioActivationFlag(activation_flag))
+        .init_resource::<CurrentTrackInfo>()
         .insert_non_send_resource(engine)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -123,7 +124,7 @@ async fn run() -> Result<(), JsValue> {
                 activate_audio_on_click,
                 resume_suspended_audio.after(activate_audio_on_click),
                 web_audio_sync.after(SpatialAudioSet),
-                handle_track_clicks.after(SpatialAudioSet),
+                update_nearest_track_info.after(SpatialAudioSet),
             ),
         )
         .run();
@@ -189,47 +190,50 @@ fn web_audio_sync(
     }
 }
 
-/// Detect mouse clicks on the canvas and show info for the nearest audible track.
+/// Tracks which `track_id` is currently shown in the info panel.
+#[derive(Resource, Default)]
+struct CurrentTrackInfo {
+    track_id: Option<usize>,
+}
+
+/// Show info for the loudest audible track automatically.
+/// Updates the foldout whenever the loudest track changes.
 #[allow(clippy::needless_pass_by_value)]
-fn handle_track_clicks(
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<vvw_game::GameCamera>>,
-    track_query: Query<(&TrackIcon, &GlobalTransform, &TrackAudioState)>,
+fn update_nearest_track_info(
+    track_query: Query<(&TrackIcon, &TrackAudioState)>,
+    mut current: ResMut<CurrentTrackInfo>,
 ) {
-    if !mouse.just_pressed(MouseButton::Left) {
-        return;
-    }
-
-    let Ok(window) = windows.single() else {
-        return;
-    };
-    let Some(cursor_pos) = window.cursor_position() else {
-        return;
-    };
-    let Ok((camera, camera_transform)) = camera_query.single() else {
-        return;
-    };
-    let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) else {
-        return;
-    };
-
-    // Find the nearest audible track icon within click range
-    let click_radius = TILE_SIZE * 1.5;
+    // Find the loudest audible track. Hysteresis: a new track must exceed
+    // the current one by a margin to prevent rapid switching at equal gains.
+    const HYSTERESIS: f32 = 0.05;
     let mut best: Option<(usize, f32)> = None;
-
-    for (icon, global_transform, state) in &track_query {
+    for (icon, state) in &track_query {
         if state.current_gain < 0.01 {
-            continue; // Skip inaudible tracks
+            continue;
         }
-        let dist = world_pos.distance(global_transform.translation().truncate());
-        if dist < click_radius && (best.is_none() || dist < best.unwrap().1) {
-            best = Some((icon.track_id, dist));
+        let dominated = if let Some((_, best_gain)) = best {
+            let margin = if current.track_id == Some(icon.track_id) {
+                0.0
+            } else {
+                HYSTERESIS
+            };
+            state.current_gain > best_gain + margin
+        } else {
+            true
+        };
+        if dominated {
+            best = Some((icon.track_id, state.current_gain));
         }
     }
 
-    if let Some((track_id, _)) = best {
-        ui::dispatch_track_select(track_id);
+    let new_id = best.map(|(id, _)| id);
+    if new_id != current.track_id {
+        current.track_id = new_id;
+        if let Some(id) = new_id {
+            ui::dispatch_track_select(id);
+        } else {
+            ui::dispatch_track_hide();
+        }
     }
 }
 
