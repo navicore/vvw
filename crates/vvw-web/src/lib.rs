@@ -157,18 +157,20 @@ fn activate_audio_on_click(flag: Res<AudioActivationFlag>, mut engine: NonSendMu
 
 /// Resume the `AudioContext` if it was suspended by the browser (e.g. after
 /// backgrounding, device sleep, or tab switch). Browsers require a user gesture,
-/// so we only call resume when a click or touch is detected.
+/// so we only call resume when a click, touch, or D-pad press is detected.
 #[allow(clippy::needless_pass_by_value)]
 fn resume_suspended_audio(
     engine: NonSend<WebAudioEngine>,
     mouse: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
+    interactions: Query<&Interaction>,
 ) {
     if !engine.needs_resume() {
         return;
     }
-    let has_gesture =
-        mouse.just_pressed(MouseButton::Left) || touches.iter_just_pressed().next().is_some();
+    let has_gesture = mouse.just_pressed(MouseButton::Left)
+        || touches.iter_just_pressed().next().is_some()
+        || interactions.iter().any(|i| *i == Interaction::Pressed);
     if has_gesture {
         web_sys::console::log_1(&"Resuming suspended AudioContext...".into());
         engine.resume();

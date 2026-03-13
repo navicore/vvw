@@ -32,6 +32,7 @@ impl Panner {
 /// Per-track audio node chain (after activation):
 /// `<audio>`(loop) -> media element source -> gain -> panner -> dest
 struct WebTrack {
+    audio_el: HtmlAudioElement,
     gain_node: GainNode,
     panner: Panner,
 }
@@ -106,8 +107,14 @@ impl WebAudioEngine {
                 Panner::None
             };
 
-            self.tracks
-                .insert(pending.id, WebTrack { gain_node, panner });
+            self.tracks.insert(
+                pending.id,
+                WebTrack {
+                    audio_el: pending.audio_el,
+                    gain_node,
+                    panner,
+                },
+            );
         }
         self.activated = true;
         Ok(())
@@ -132,20 +139,32 @@ impl WebAudioEngine {
         }
     }
 
-    /// Returns true if the `AudioContext` needs resuming (suspended, or iOS
-    /// Safari's non-standard "interrupted" state). We check for "not running
-    /// and not closed" rather than specifically `Suspended` so that unknown
-    /// states (like `interrupted`) are also caught.
+    /// Returns true if audio needs resuming: either the `AudioContext` is
+    /// suspended (or iOS Safari's "interrupted" state), or any `<audio>`
+    /// elements have been paused by the browser (e.g. bfcache restore on Android).
     pub fn needs_resume(&self) -> bool {
         if !self.activated {
             return false;
         }
         let state = self.ctx.state();
-        state != AudioContextState::Running && state != AudioContextState::Closed
+        let ctx_suspended =
+            state != AudioContextState::Running && state != AudioContextState::Closed;
+        let any_paused = self.tracks.values().any(|t| t.audio_el.paused());
+        ctx_suspended || any_paused
     }
 
-    /// Resume a suspended `AudioContext`. Must be called from a user gesture.
+    /// Resume a suspended `AudioContext` and restart any paused `<audio>`
+    /// elements. Must be called from a user gesture. Handles bfcache restore
+    /// on Android where both the context and elements may have stopped.
     pub fn resume(&self) {
+        // Re-play any audio elements that stopped during backgrounding
+        for track in self.tracks.values() {
+            if track.audio_el.paused()
+                && let Err(e) = track.audio_el.play()
+            {
+                web_sys::console::error_1(&format!("audio element play() failed: {e:?}").into());
+            }
+        }
         match self.ctx.resume() {
             Ok(promise) => {
                 let on_err = Closure::once(move |e: JsValue| {
