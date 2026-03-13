@@ -185,7 +185,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
         let artwork_url = if let Some(ref url) = track_meta.artwork_url {
             Some(url.clone())
         } else if let Some(img_path) = find_track_image(&opts.audio_dir, audio_file)
-            .filter(|p| cover_image.as_ref() != Some(p))
+            .filter(|p| cover_art_filename.is_none() || cover_image.as_ref() != Some(p))
         {
             let ext = img_path
                 .extension()

@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 /// Resolve an image URL: absolute URLs pass through, relative ones are
 /// prefixed with the audio base URL (images live alongside audio on R2).
 fn resolve_image_url(url: &str, audio_base_url: &str) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") {
+    if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else {
         format!("{audio_base_url}{url}")
