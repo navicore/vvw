@@ -130,28 +130,31 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
     }
 
     // 7. Scan for images (cover art + per-track artwork)
+    // Skip auto-detected cover if the user already set an explicit cover_art_url
     let cover_image = find_cover_image(&opts.audio_dir);
     let mut cover_art_filename: Option<String> = None;
-    if let Some(ref img_path) = cover_image {
-        let ext = img_path
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        let dest_name = format!("cover.{ext}");
-        let dest = audio_out.join(&dest_name);
-        std::fs::copy(img_path, &dest).with_context(|| {
-            format!(
-                "copying cover art {} → {}",
-                img_path.display(),
-                dest.display()
-            )
-        })?;
-        cover_art_filename = Some(dest_name);
-        println!(
-            "  Cover art: {}",
-            img_path.file_name().unwrap_or_default().to_string_lossy()
-        );
+    if metadata.album.cover_art_url.is_none() {
+        if let Some(ref img_path) = cover_image {
+            let ext = img_path
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let dest_name = format!("cover.{ext}");
+            let dest = audio_out.join(&dest_name);
+            std::fs::copy(img_path, &dest).with_context(|| {
+                format!(
+                    "copying cover art {} → {}",
+                    img_path.display(),
+                    dest.display()
+                )
+            })?;
+            cover_art_filename = Some(dest_name);
+            println!(
+                "  Cover art: {}",
+                img_path.file_name().unwrap_or_default().to_string_lossy()
+            );
+        }
     }
 
     // 8. Build track entries, copy audio files, and match track artwork
@@ -178,9 +181,12 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             })?;
 
         // Check for per-track artwork image (e.g., "Song.jpg" next to "Song.flac")
+        // Skip if the matched image is the same as the album cover
         let artwork_url = if let Some(ref url) = track_meta.artwork_url {
             Some(url.clone())
-        } else if let Some(img_path) = find_track_image(&opts.audio_dir, audio_file) {
+        } else if let Some(img_path) = find_track_image(&opts.audio_dir, audio_file)
+            .filter(|p| cover_image.as_ref() != Some(p))
+        {
             let ext = img_path
                 .extension()
                 .unwrap_or_default()
