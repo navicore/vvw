@@ -193,7 +193,7 @@
     <div id="page">
         <header id="album-header" style="display: none;">
             <div class="album-text">
-                <h1 id="header-title"></h1>
+                <h1 id="header-title"><span id="header-title-text"></span> <span id="header-chevron" style="font-size:0.7em; color:#666;">&#9662;</span></h1>
                 <p id="header-artist" class="artist"></p>
                 <p id="header-description" class="description"></p>
             </div>
@@ -215,7 +215,7 @@
                 <div id="track-info-inner">
                     <img id="track-artwork-img" class="track-artwork" style="display:none;" alt="Track artwork" />
                     <div id="track-info-text">
-                        <h3 class="track-title" id="track-info-title"></h3>
+                        <h3 class="track-title" id="track-info-title"><span id="track-title-text"></span> <span id="track-chevron" style="font-size:0.7em; color:#666;">&#9662;</span></h3>
                         <p class="track-artist" id="track-info-artist"></p>
                         <p class="track-description" id="track-info-description"></p>
                         <ul class="track-links" id="track-info-links"></ul>
@@ -284,6 +284,7 @@
                 linksEl.style.display = linksEl.children.length ? '' : 'none';
             }
 
+            var headerChevron = document.getElementById('header-chevron');
             if (headerTitle) {
                 headerTitle.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -291,6 +292,7 @@
                         populateAlbumPanel();
                     }
                     albumPanel.classList.toggle('open');
+                    headerChevron.innerHTML = albumPanel.classList.contains('open') ? '&#9652;' : '&#9662;';
                 });
             }
 
@@ -298,8 +300,10 @@
             document.addEventListener('click', function(e) {
                 if (albumPanel.classList.contains('open') &&
                     !albumPanel.contains(e.target) &&
-                    e.target !== headerTitle) {
+                    e.target !== headerTitle &&
+                    !headerTitle.contains(e.target)) {
                     albumPanel.classList.remove('open');
+                    headerChevron.innerHTML = '&#9662;';
                 }
             });
 
@@ -326,7 +330,10 @@
                 if (!data) return;
                 currentTrackData = data;
 
-                document.getElementById('track-info-title').textContent = data.title;
+                document.getElementById('track-title-text').textContent = data.title;
+                var chevron = document.getElementById('track-chevron');
+                chevron.innerHTML = '&#9662;';
+                chevron.style.display = data.artworkUrl ? '' : 'none';
                 document.getElementById('track-info-artist').textContent = data.artist;
 
                 var descEl = document.getElementById('track-info-description');
@@ -363,6 +370,7 @@
 
             // Toggle track artwork on title click/tap
             var trackTitle = document.getElementById('track-info-title');
+            var trackChevron = document.getElementById('track-chevron');
             if (trackTitle) {
                 trackTitle.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -371,8 +379,10 @@
                     if (artImg.style.display === 'none') {
                         artImg.src = currentTrackData.artworkUrl;
                         artImg.style.display = '';
+                        trackChevron.innerHTML = '&#9652;';
                     } else {
                         artImg.style.display = 'none';
+                        trackChevron.innerHTML = '&#9662;';
                     }
                 });
             }

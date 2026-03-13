@@ -26,7 +26,7 @@ pub fn populate_album_info(album: &AlbumMetadata, audio_base_url: &str) {
     };
 
     set_text(&document, "album-title", title);
-    set_text(&document, "header-title", title);
+    set_text(&document, "header-title-text", title);
 
     if !album.artist.is_empty() {
         set_text(&document, "album-artist", &album.artist);

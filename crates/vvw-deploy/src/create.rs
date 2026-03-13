@@ -140,10 +140,18 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             .to_string();
         let dest_name = format!("cover.{ext}");
         let dest = audio_out.join(&dest_name);
-        std::fs::copy(img_path, &dest)
-            .with_context(|| format!("copying cover art {} → {}", img_path.display(), dest.display()))?;
+        std::fs::copy(img_path, &dest).with_context(|| {
+            format!(
+                "copying cover art {} → {}",
+                img_path.display(),
+                dest.display()
+            )
+        })?;
         cover_art_filename = Some(dest_name);
-        println!("  Cover art: {}", img_path.file_name().unwrap_or_default().to_string_lossy());
+        println!(
+            "  Cover art: {}",
+            img_path.file_name().unwrap_or_default().to_string_lossy()
+        );
     }
 
     // 8. Build track entries, copy audio files, and match track artwork
@@ -180,9 +188,17 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
                 .to_string();
             let dest_name = format!("{i}.{ext}");
             let img_dest = audio_out.join(&dest_name);
-            std::fs::copy(&img_path, &img_dest)
-                .with_context(|| format!("copying track art {} → {}", img_path.display(), img_dest.display()))?;
-            println!("  Track art: {} → {dest_name}", img_path.file_name().unwrap_or_default().to_string_lossy());
+            std::fs::copy(&img_path, &img_dest).with_context(|| {
+                format!(
+                    "copying track art {} → {}",
+                    img_path.display(),
+                    img_dest.display()
+                )
+            })?;
+            println!(
+                "  Track art: {} → {dest_name}",
+                img_path.file_name().unwrap_or_default().to_string_lossy()
+            );
             Some(dest_name)
         } else {
             None
@@ -204,10 +220,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
     }
 
     // 9. Build and write manifest
-    let cover_art_url = metadata
-        .album
-        .cover_art_url
-        .or(cover_art_filename);
+    let cover_art_url = metadata.album.cover_art_url.or(cover_art_filename);
     let manifest = ProjectManifest {
         maze,
         rooms: state.rooms,
