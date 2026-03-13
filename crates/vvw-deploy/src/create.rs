@@ -14,6 +14,9 @@ use crate::projects_dir;
 /// Audio file extensions we recognize.
 const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "ogg", "flac"];
 
+/// Image file extensions we recognize for artwork.
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png"];
+
 /// Input metadata format — what the user edits. Distinct from `ProjectManifest`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputMetadata {
@@ -45,6 +48,8 @@ pub struct InputTrackMetadata {
     pub description: Option<String>,
     #[serde(default)]
     pub lyrics: Option<String>,
+    #[serde(default)]
+    pub artwork_url: Option<String>,
     #[serde(default)]
     pub links: Vec<(String, String)>,
 }
@@ -124,7 +129,35 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
         grow_maze(&mut maze, &mut state, i);
     }
 
-    // 7. Build track entries and copy audio files
+    // 7. Scan for images (cover art + per-track artwork)
+    // Skip auto-detected cover if the user already set an explicit cover_art_url
+    let cover_image = find_cover_image(&opts.audio_dir);
+    let mut cover_art_filename: Option<String> = None;
+    if metadata.album.cover_art_url.is_none()
+        && let Some(ref img_path) = cover_image
+    {
+        let ext = img_path
+            .extension()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let dest_name = format!("cover.{ext}");
+        let dest = audio_out.join(&dest_name);
+        std::fs::copy(img_path, &dest).with_context(|| {
+            format!(
+                "copying cover art {} → {}",
+                img_path.display(),
+                dest.display()
+            )
+        })?;
+        cover_art_filename = Some(dest_name);
+        println!(
+            "  Cover art: {}",
+            img_path.file_name().unwrap_or_default().to_string_lossy()
+        );
+    }
+
+    // 8. Build track entries, copy audio files, and match track artwork
     let mut tracks = Vec::with_capacity(audio_files.len());
     for (i, audio_file) in audio_files.iter().enumerate() {
         let dest = audio_out.join(format!("{i}.audio"));
@@ -147,6 +180,36 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
                 )
             })?;
 
+        // Check for per-track artwork image (e.g., "Song.jpg" next to "Song.flac")
+        // Skip if the matched image is the same as the album cover
+        let artwork_url = if let Some(ref url) = track_meta.artwork_url {
+            Some(url.clone())
+        } else if let Some(img_path) = find_track_image(&opts.audio_dir, audio_file)
+            .filter(|p| cover_image.as_ref() != Some(p))
+        {
+            let ext = img_path
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let dest_name = format!("{i}.{ext}");
+            let img_dest = audio_out.join(&dest_name);
+            std::fs::copy(&img_path, &img_dest).with_context(|| {
+                format!(
+                    "copying track art {} → {}",
+                    img_path.display(),
+                    img_dest.display()
+                )
+            })?;
+            println!(
+                "  Track art: {} → {dest_name}",
+                img_path.file_name().unwrap_or_default().to_string_lossy()
+            );
+            Some(dest_name)
+        } else {
+            None
+        };
+
         tracks.push(TrackEntry {
             track_id: i,
             original_filename: filename,
@@ -156,12 +219,14 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
                 duration_secs: track_meta.duration_secs,
                 description: track_meta.description.clone().unwrap_or_default(),
                 lyrics: track_meta.lyrics.clone(),
+                artwork_url,
                 links: track_meta.links.clone(),
             },
         });
     }
 
-    // 8. Build and write manifest
+    // 9. Build and write manifest
+    let cover_art_url = metadata.album.cover_art_url.or(cover_art_filename);
     let manifest = ProjectManifest {
         maze,
         rooms: state.rooms,
@@ -173,7 +238,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             title: metadata.album.title,
             artist: metadata.album.artist,
             description: metadata.album.description,
-            cover_art_url: metadata.album.cover_art_url,
+            cover_art_url,
             release_date: metadata.album.release_date,
             links: metadata.album.links,
         },
@@ -185,7 +250,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
     std::fs::write(&manifest_path, &ron_string)
         .with_context(|| format!("writing {}", manifest_path.display()))?;
 
-    // 9. Summary
+    // 10. Summary
     println!();
     println!("Album created:");
     println!("  Name:   {project_name}");
@@ -384,6 +449,29 @@ fn validate_metadata(metadata: &InputMetadata, audio_files: &[PathBuf]) -> Resul
     }
 }
 
+/// Find the cover art image in a directory (cover.jpg, cover.png, etc.)
+fn find_cover_image(dir: &Path) -> Option<PathBuf> {
+    for ext in IMAGE_EXTENSIONS {
+        let path = dir.join(format!("cover.{ext}"));
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Find a track artwork image matching an audio file's stem (e.g., "Song.jpg" for "Song.flac")
+fn find_track_image(dir: &Path, audio_file: &Path) -> Option<PathBuf> {
+    let stem = audio_file.file_stem()?.to_str()?;
+    for ext in IMAGE_EXTENSIONS {
+        let path = dir.join(format!("{stem}.{ext}"));
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 /// Simple slug: lowercase, replace non-alphanumeric runs with hyphens, trim hyphens.
 fn slugify(s: &str) -> String {
     let slug: String = s
@@ -465,6 +553,7 @@ mod tests {
                 duration_secs: None,
                 description: None,
                 lyrics: None,
+                artwork_url: None,
                 links: vec![],
             }],
         };
@@ -513,6 +602,7 @@ mod tests {
                 duration_secs: None,
                 description: None,
                 lyrics: None,
+                artwork_url: None,
                 links: vec![],
             }],
         };

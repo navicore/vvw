@@ -3,8 +3,51 @@
 use vvw_core::project::{AlbumMetadata, TrackEntry};
 use wasm_bindgen::prelude::*;
 
+/// Resolve an image URL: absolute URLs pass through, relative ones are
+/// prefixed with the audio base URL (images live alongside audio on R2).
+fn resolve_image_url(url: &str, audio_base_url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else {
+        format!("{audio_base_url}{url}")
+    }
+}
+
+/// Escape a string for embedding in a JSON value.
+/// Handles backslash, double-quote, and control characters.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {
+                // Encode as \uXXXX
+                use std::fmt::Write;
+                for unit in c.encode_utf16(&mut [0u16; 2]) {
+                    let _ = write!(out, "\\u{unit:04x}");
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Encode a list of (label, url) pairs as a JSON array of [label, url] arrays.
+fn encode_links_json(links: &[(String, String)]) -> String {
+    let pairs: Vec<String> = links
+        .iter()
+        .map(|(label, url)| format!("[\"{}\",\"{}\"]", json_escape(label), json_escape(url)))
+        .collect();
+    format!("[{}]", pairs.join(","))
+}
+
 /// Populate the start overlay and gameplay header with album metadata
-pub fn populate_album_info(album: &AlbumMetadata) {
+pub fn populate_album_info(album: &AlbumMetadata, audio_base_url: &str) {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
     };
@@ -16,7 +59,7 @@ pub fn populate_album_info(album: &AlbumMetadata) {
     };
 
     set_text(&document, "album-title", title);
-    set_text(&document, "header-title", title);
+    set_text(&document, "header-title-text", title);
 
     if !album.artist.is_empty() {
         set_text(&document, "album-artist", &album.artist);
@@ -26,11 +69,29 @@ pub fn populate_album_info(album: &AlbumMetadata) {
     if !album.description.is_empty() {
         set_text(&document, "header-description", &album.description);
     }
+
+    // Inject album detail data into hidden #album-data div
+    if let Some(container) = document.get_element_by_id("album-data") {
+        container
+            .set_attribute("data-description", &album.description)
+            .ok();
+        if let Some(ref url) = album.cover_art_url {
+            let resolved = resolve_image_url(url, audio_base_url);
+            container
+                .set_attribute("data-cover-art-url", &resolved)
+                .ok();
+        }
+        if !album.links.is_empty() {
+            container
+                .set_attribute("data-links", &encode_links_json(&album.links))
+                .ok();
+        }
+    }
 }
 
 /// Inject track metadata into the DOM as data attributes on a hidden element.
 /// The track-select event handler reads this to populate the foldout.
-pub fn inject_track_metadata(tracks: &[TrackEntry]) {
+pub fn inject_track_metadata(tracks: &[TrackEntry], audio_base_url: &str) {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
     };
@@ -51,22 +112,14 @@ pub fn inject_track_metadata(tracks: &[TrackEntry]) {
         if let Some(ref lyrics) = entry.metadata.lyrics {
             el.set_attribute("data-lyrics", lyrics).ok();
         }
+        if let Some(ref url) = entry.metadata.artwork_url {
+            let resolved = resolve_image_url(url, audio_base_url);
+            el.set_attribute("data-artwork-url", &resolved).ok();
+        }
         // Encode links as JSON array of [label, url] pairs
         if !entry.metadata.links.is_empty() {
-            let links_json: Vec<String> = entry
-                .metadata
-                .links
-                .iter()
-                .map(|(label, url)| {
-                    format!(
-                        "[\"{}\",\"{}\"]",
-                        label.replace('\\', "\\\\").replace('"', "\\\""),
-                        url.replace('\\', "\\\\").replace('"', "\\\"")
-                    )
-                })
-                .collect();
-            let json = format!("[{}]", links_json.join(","));
-            el.set_attribute("data-links", &json).ok();
+            el.set_attribute("data-links", &encode_links_json(&entry.metadata.links))
+                .ok();
         }
         container.append_child(&el).ok();
     }

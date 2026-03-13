@@ -36,6 +36,9 @@ pub struct TrackMetadata {
     pub duration_secs: Option<f32>,
     pub description: String,
     pub lyrics: Option<String>,
+    /// URL to track artwork image (recommended 160x160px+)
+    #[serde(default)]
+    pub artwork_url: Option<String>,
     /// External links: (label, url) pairs
     pub links: Vec<(String, String)>,
 }
@@ -131,6 +134,7 @@ mod tests {
                     duration_secs: Some(180.0),
                     description: "A test track".to_string(),
                     lyrics: Some("la la la".to_string()),
+                    artwork_url: None,
                     links: vec![("web".to_string(), "https://example.com".to_string())],
                 },
             }],
