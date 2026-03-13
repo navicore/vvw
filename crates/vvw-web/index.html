@@ -31,6 +31,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            cursor: pointer;
         }
         #album-header .artist {
             margin: 0.15rem 0 0;
@@ -45,6 +46,75 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        /* Album detail panel — drops down from header over canvas */
+        #album-detail {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: transparent;
+            border-bottom: none;
+            opacity: 0;
+            transform: translateY(-100%);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+            z-index: 3;
+            max-height: 60%;
+            overflow-y: auto;
+        }
+        #album-detail.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        #album-detail-inner {
+            padding: 1rem 1.5rem;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+        #album-detail .album-cover {
+            width: 320px;
+            height: 320px;
+            object-fit: cover;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        #album-detail .album-detail-text { min-width: 0; }
+        #album-detail .album-full-description {
+            margin: 0;
+            font-size: 0.85rem;
+            color: #bbb;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        #album-detail .album-detail-links {
+            margin: 0.75rem 0 0;
+            padding: 0;
+            list-style: none;
+            display: flex;
+            gap: 1rem;
+            font-size: 0.8rem;
+        }
+        #album-detail .album-detail-links a {
+            color: #6688cc;
+            text-decoration: none;
+            pointer-events: auto;
+        }
+        #album-detail .album-detail-links a:hover { text-decoration: underline; }
+
+        /* Track artwork */
+        .track-artwork {
+            width: 320px;
+            height: 320px;
+            object-fit: cover;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        #track-info-inner {
+            padding: 0.5rem 1.5rem;
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-start;
+        }
+        #track-info-text { min-width: 0; }
 
         /* Canvas container */
         #canvas-container {
@@ -72,14 +142,12 @@
             pointer-events: none;
             z-index: 2;
         }
-        #track-info.open { opacity: 1; transform: translateY(0); }
-        #track-info-inner {
-            padding: 0.5rem 1.5rem;
-        }
+        #track-info.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
         #track-info .track-title {
             margin: 0;
             font-size: 1.1rem;
             font-weight: 600;
+            cursor: pointer;
         }
         #track-info .track-artist {
             margin: 0.2rem 0 0;
@@ -134,17 +202,31 @@
 
         <div id="canvas-container">
             <canvas id="game-canvas"></canvas>
+            <div id="album-detail">
+                <div id="album-detail-inner">
+                    <img id="album-cover-img" class="album-cover" style="display:none;" alt="Album cover" />
+                    <div class="album-detail-text">
+                        <p class="album-full-description" id="album-full-description"></p>
+                        <ul class="album-detail-links" id="album-detail-links"></ul>
+                    </div>
+                </div>
+            </div>
             <div id="track-info">
                 <div id="track-info-inner">
-                    <h3 class="track-title" id="track-info-title"></h3>
-                    <p class="track-artist" id="track-info-artist"></p>
-                    <p class="track-description" id="track-info-description"></p>
-                    <ul class="track-links" id="track-info-links"></ul>
+                    <img id="track-artwork-img" class="track-artwork" style="display:none;" alt="Track artwork" />
+                    <div id="track-info-text">
+                        <h3 class="track-title" id="track-info-title"></h3>
+                        <p class="track-artist" id="track-info-artist"></p>
+                        <p class="track-description" id="track-info-description"></p>
+                        <ul class="track-links" id="track-info-links"></ul>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Album metadata injected by WASM at startup -->
+    <div id="album-data" style="display:none;"></div>
     <!-- Track metadata injected by WASM at startup -->
     <div id="track-data"></div>
 
@@ -155,9 +237,74 @@
     </div>
 
     <script>
-        // Track info bar — shows the loudest audible track automatically
         (function() {
-            var panel = document.getElementById('track-info');
+            // --- Album detail panel ---
+            var albumPanel = document.getElementById('album-detail');
+            var headerTitle = document.getElementById('header-title');
+
+            function populateAlbumPanel() {
+                var data = document.getElementById('album-data');
+                if (!data) return;
+
+                var desc = data.getAttribute('data-description') || '';
+                var coverUrl = data.getAttribute('data-cover-art-url') || '';
+                var links = data.getAttribute('data-links') || '';
+
+                var descEl = document.getElementById('album-full-description');
+                descEl.textContent = desc;
+                descEl.style.display = desc ? '' : 'none';
+
+                var coverImg = document.getElementById('album-cover-img');
+                if (coverUrl) {
+                    coverImg.src = coverUrl;
+                    coverImg.style.display = '';
+                } else {
+                    coverImg.style.display = 'none';
+                }
+
+                var linksEl = document.getElementById('album-detail-links');
+                linksEl.innerHTML = '';
+                if (links) {
+                    try {
+                        JSON.parse(links).forEach(function(pair) {
+                            if (!Array.isArray(pair) || pair.length < 2) return;
+                            var url = pair[1];
+                            if (!/^https?:\/\//i.test(url)) return;
+                            var li = document.createElement('li');
+                            var a = document.createElement('a');
+                            a.textContent = pair[0];
+                            a.href = url;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            li.appendChild(a);
+                            linksEl.appendChild(li);
+                        });
+                    } catch (e) { /* ignore malformed JSON */ }
+                }
+                linksEl.style.display = linksEl.children.length ? '' : 'none';
+            }
+
+            if (headerTitle) {
+                headerTitle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (!albumPanel.classList.contains('open')) {
+                        populateAlbumPanel();
+                    }
+                    albumPanel.classList.toggle('open');
+                });
+            }
+
+            // Close album panel on click outside
+            document.addEventListener('click', function(e) {
+                if (albumPanel.classList.contains('open') &&
+                    !albumPanel.contains(e.target) &&
+                    e.target !== headerTitle) {
+                    albumPanel.classList.remove('open');
+                }
+            });
+
+            // --- Track info bar ---
+            var trackPanel = document.getElementById('track-info');
 
             function findTrackData(trackId) {
                 var el = document.querySelector('#track-data [data-track-id="' + trackId + '"]');
@@ -166,13 +313,18 @@
                     title: el.getAttribute('data-title') || '',
                     artist: el.getAttribute('data-artist') || '',
                     description: el.getAttribute('data-description') || '',
+                    artworkUrl: el.getAttribute('data-artwork-url') || '',
                     links: el.getAttribute('data-links') || ''
                 };
             }
 
+            // Current track data (for artwork toggle)
+            var currentTrackData = null;
+
             function showTrack(trackId) {
                 var data = findTrackData(trackId);
                 if (!data) return;
+                currentTrackData = data;
 
                 document.getElementById('track-info-title').textContent = data.title;
                 document.getElementById('track-info-artist').textContent = data.artist;
@@ -180,6 +332,10 @@
                 var descEl = document.getElementById('track-info-description');
                 descEl.textContent = data.description;
                 descEl.style.display = data.description ? '' : 'none';
+
+                // Hide artwork on approach — only shown on click
+                var artImg = document.getElementById('track-artwork-img');
+                artImg.style.display = 'none';
 
                 var linksEl = document.getElementById('track-info-links');
                 linksEl.innerHTML = '';
@@ -202,7 +358,23 @@
                 }
                 linksEl.style.display = linksEl.children.length ? '' : 'none';
 
-                panel.classList.add('open');
+                trackPanel.classList.add('open');
+            }
+
+            // Toggle track artwork on title click/tap
+            var trackTitle = document.getElementById('track-info-title');
+            if (trackTitle) {
+                trackTitle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var artImg = document.getElementById('track-artwork-img');
+                    if (!currentTrackData || !currentTrackData.artworkUrl) return;
+                    if (artImg.style.display === 'none') {
+                        artImg.src = currentTrackData.artworkUrl;
+                        artImg.style.display = '';
+                    } else {
+                        artImg.style.display = 'none';
+                    }
+                });
             }
 
             document.addEventListener('track-select', function(e) {
@@ -210,7 +382,8 @@
             });
 
             document.addEventListener('track-hide', function() {
-                panel.classList.remove('open');
+                trackPanel.classList.remove('open');
+                currentTrackData = null;
             });
         })();
     </script>

@@ -55,12 +55,12 @@ async fn run() -> Result<(), JsValue> {
     );
 
     // 2. Populate album info on the overlay
-    ui::populate_album_info(&loaded.manifest.album);
+    let audio_base_url = &loaded.audio_base_url;
+    ui::populate_album_info(&loaded.manifest.album, audio_base_url);
     ui::set_build_info();
 
     // 3. Set up Web Audio engine — tracks are registered but NOT connected yet
     let mut engine = WebAudioEngine::new()?;
-    let audio_base_url = &loaded.audio_base_url;
 
     for entry in &loaded.manifest.tracks {
         let url = format!("{audio_base_url}{}.audio", entry.track_id);
@@ -91,7 +91,7 @@ async fn run() -> Result<(), JsValue> {
     setup_overlay_click(ctx_for_click, Arc::clone(&activation_flag))?;
 
     // 5. Inject track metadata into DOM for the foldout
-    ui::inject_track_metadata(&loaded.manifest.tracks);
+    ui::inject_track_metadata(&loaded.manifest.tracks, audio_base_url);
 
     // 6. Create and run Bevy app
     let maze = loaded.manifest.maze;
