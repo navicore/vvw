@@ -26,8 +26,9 @@ fn json_escape(s: &str) -> String {
             '\t' => out.push_str("\\t"),
             c if c.is_control() => {
                 // Encode as \uXXXX
+                use std::fmt::Write;
                 for unit in c.encode_utf16(&mut [0u16; 2]) {
-                    out.push_str(&format!("\\u{unit:04x}"));
+                    let _ = write!(out, "\\u{unit:04x}");
                 }
             }
             _ => out.push(c),
