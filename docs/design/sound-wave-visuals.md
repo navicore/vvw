@@ -41,6 +41,10 @@ Configured per-album in `project.ron` via a new optional field (e.g., `sound_vis
 - Sprites use the track's light color (already set per-track) for visual consistency
 - Below a gain threshold (e.g., 0.05), visuals are fully hidden — no clutter from distant sources
 
+### Mixed mode
+
+The artist can specify multiple styles (e.g., `sound_visual_style: Mixed([Lines, Ripples])`) and the maze generator randomly assigns one to each track at create time. The assignment is stored per-track in the manifest so it's deterministic on replay. This gives visual variety — one track pulses with ripples while its neighbor throws comic lines — without the artist hand-picking each one.
+
 ### Intensity
 
 Each style supports a configurable intensity/subtlety level, defaulting to moderate. The artist can tune how prominent the visuals are relative to their background artwork.
