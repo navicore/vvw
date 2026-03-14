@@ -39,7 +39,7 @@ impl Default for TrackAudioState {
             current_pan: 0.0,
             fade_speed: 2.0,
             visible: false,
-            distance: f32::MAX,
+            distance: 0.0,
         }
     }
 }

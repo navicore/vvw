@@ -11,7 +11,6 @@
 
 use std::collections::HashMap;
 
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use web_sys::{AudioContext, AudioContextState, GainNode, HtmlAudioElement};
 
@@ -224,32 +223,39 @@ impl WebAudioEngine {
         if ctx_suspended {
             return true;
         }
-        self.tracks.values().any(|t| t.audio_el.paused())
+        self.tracks
+            .values()
+            .any(|t| t.audio_el.paused() && !t.paused_for_distance)
     }
 
     /// Resume a suspended `AudioContext` and restart any paused `<audio>`
     /// elements. Must be called from a user gesture. Handles bfcache restore
     /// on Android where both the context and elements may have stopped.
-    pub fn resume(&mut self) {
-        // Re-play audio elements that stopped during backgrounding.
-        // Skip tracks intentionally paused for distance — update_streaming
-        // will resume them if the player is close enough.
-        for (&id, track) in &mut self.tracks {
-            if track.audio_el.paused() && !track.paused_for_distance {
-                Self::play_with_rejection_handler(&track.audio_el, id);
-            }
-        }
+    pub fn resume(&self) {
+        // Collect tracks that need resuming (browser-paused, not distance-paused).
+        // We collect IDs + element clones so we can replay them after ctx.resume().
+        let to_resume: Vec<(usize, HtmlAudioElement)> = self
+            .tracks
+            .iter()
+            .filter(|(_, t)| t.audio_el.paused() && !t.paused_for_distance)
+            .map(|(&id, t)| (id, t.audio_el.clone()))
+            .collect();
+
+        // Resume AudioContext first, then play() elements in the async continuation.
+        // iOS Safari ignores play() on elements connected to a suspended AudioContext.
         match self.ctx.resume() {
             Ok(promise) => {
-                let on_err = Closure::once(move |e: JsValue| {
-                    web_sys::console::error_1(
-                        &format!("AudioContext resume rejected: {e:?}").into(),
-                    );
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) = wasm_bindgen_futures::JsFuture::from(promise).await {
+                        web_sys::console::error_1(
+                            &format!("AudioContext resume rejected: {e:?}").into(),
+                        );
+                        return;
+                    }
+                    for (id, audio_el) in to_resume {
+                        Self::play_with_rejection_handler(&audio_el, id);
+                    }
                 });
-                let _ = promise.catch(&on_err);
-                // NOTE: leaks ~few bytes of WASM linear memory per call.
-                // Acceptable here — resume() only fires on rare user gestures.
-                on_err.forget();
             }
             Err(e) => {
                 web_sys::console::error_1(&format!("audio resume error: {e:?}").into());

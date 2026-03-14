@@ -256,7 +256,7 @@ fn activate_audio_on_click(flag: Res<AudioActivationFlag>, mut engine: NonSendMu
 /// so we only call resume when a click, touch, or D-pad press is detected.
 #[allow(clippy::needless_pass_by_value)]
 fn resume_suspended_audio(
-    mut engine: NonSendMut<WebAudioEngine>,
+    engine: NonSend<WebAudioEngine>,
     mouse: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
     interactions: Query<&Interaction>,
