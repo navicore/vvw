@@ -306,35 +306,6 @@ fn content_type_for(filename: &str) -> &str {
     }
 }
 
-/// Progress-tracking async reader wrapper.
-/// Prints byte-level upload progress to stderr.
-struct ProgressReader<R> {
-    inner: R,
-    read_bytes: u64,
-    total_bytes: u64,
-}
-
-impl<R: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for ProgressReader<R> {
-    fn poll_read(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        let before = buf.filled().len();
-        let result = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
-        if matches!(&result, std::task::Poll::Ready(Ok(()))) {
-            let read = buf.filled().len() - before;
-            self.read_bytes += read as u64;
-            eprint!(
-                "\r    {} / {} ",
-                human_size(self.read_bytes),
-                human_size(self.total_bytes),
-            );
-        }
-        result
-    }
-}
-
 /// Try to create an S3-compatible bucket handle for R2.
 /// Returns `None` if the required environment variables are not set.
 fn try_create_s3_bucket(bucket_name: &str) -> Option<s3::Bucket> {
@@ -359,30 +330,36 @@ fn try_create_s3_bucket(bucket_name: &str) -> Option<s3::Bucket> {
     Some(*bucket.with_path_style())
 }
 
-/// Upload a file to R2 via the S3 API with byte-level progress.
+/// Upload a file to R2 via the S3 API with retries.
 async fn s3_put_with_progress(
     bucket: &s3::Bucket,
     key: &str,
     file: &Path,
     content_type: &str,
 ) -> Result<()> {
-    let metadata = std::fs::metadata(file)?;
-    let total_bytes = metadata.len();
+    const MAX_RETRIES: u32 = 3;
 
-    let f = tokio::fs::File::open(file).await?;
-    let mut reader = ProgressReader {
-        inner: f,
-        read_bytes: 0,
-        total_bytes,
-    };
+    for attempt in 1..=MAX_RETRIES {
+        let mut f = tokio::fs::File::open(file).await?;
 
-    bucket
-        .put_object_stream_with_content_type(&mut reader, key, content_type)
-        .await
-        .map_err(|e| anyhow::anyhow!("S3 upload failed for {key}: {e}"))?;
-
-    eprintln!(); // newline after progress
-    Ok(())
+        match bucket
+            .put_object_stream_with_content_type(&mut f, key, content_type)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                if attempt < MAX_RETRIES {
+                    let wait = attempt * 2;
+                    eprintln!("    attempt {attempt}/{MAX_RETRIES} failed: {e}");
+                    eprintln!("    retrying in {wait}s...");
+                    tokio::time::sleep(std::time::Duration::from_secs(u64::from(wait))).await;
+                } else {
+                    anyhow::bail!("S3 upload failed for {key} after {MAX_RETRIES} attempts: {e}");
+                }
+            }
+        }
+    }
+    unreachable!()
 }
 
 /// Upload a single file to R2 via wrangler, with retries for transient failures.

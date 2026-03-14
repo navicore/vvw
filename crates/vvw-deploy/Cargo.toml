@@ -18,8 +18,8 @@ ron.workspace = true
 serde.workspace = true
 dirs.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
-rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls", "fail-on-err"] }
-tokio = { version = "1", features = ["rt", "fs", "io-util"] }
+rust-s3 = { version = "0.35", default-features = false, features = ["use-tokio-native-tls", "fail-on-err"] }
+tokio = { version = "1", features = ["rt", "fs", "io-util", "time"] }
 
 [lints]
 workspace = true
