@@ -277,12 +277,15 @@ fn resume_suspended_audio(
 /// `VvwGamePlugin`'s spatial audio systems) and pushes them to the Web Audio nodes.
 #[allow(clippy::needless_pass_by_value)]
 fn web_audio_sync(
-    engine: NonSend<WebAudioEngine>,
+    mut engine: NonSendMut<WebAudioEngine>,
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
+    time: Res<Time>,
 ) {
+    let dt = time.delta_secs();
     for (track_icon, state) in &track_query {
         engine.set_volume(track_icon.track_id, state.current_gain);
         engine.set_panning(track_icon.track_id, state.current_pan);
+        engine.update_streaming(track_icon.track_id, state.distance, dt);
     }
 }
 
