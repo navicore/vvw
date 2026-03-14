@@ -34,6 +34,8 @@ struct WebTrack {
     audio_el: HtmlAudioElement,
     gain_node: GainNode,
     panner: Panner,
+    /// Original audio URL, stored so we can restore it after clearing src.
+    url: String,
     /// True when intentionally paused to save bandwidth (not browser-suspended).
     paused_for_distance: bool,
     /// Seconds the track has been in the silent zone. Pause after debounce threshold.
@@ -110,12 +112,14 @@ impl WebAudioEngine {
                 Panner::None
             };
 
+            let url = pending.audio_el.src();
             self.tracks.insert(
                 pending.id,
                 WebTrack {
                     audio_el: pending.audio_el,
                     gain_node,
                     panner,
+                    url,
                     paused_for_distance: false,
                     silent_secs: 0.0,
                 },
@@ -164,16 +168,33 @@ impl WebAudioEngine {
             return;
         };
 
+        if !track.distance_logged && distance < f32::MAX {
+            track.distance_logged = true;
+            web_sys::console::log_1(
+                &format!(
+                    "track {id}: distance={distance:.1}, prefetch={PREFETCH_DISTANCE}, paused={}",
+                    track.paused_for_distance
+                )
+                .into(),
+            );
+        }
+
         if distance < PREFETCH_DISTANCE {
             // Within range: resume immediately if paused for distance
             track.silent_secs = 0.0;
             if track.paused_for_distance {
                 track.paused_for_distance = false;
+                // Restore the src that was cleared when pausing, then play.
                 // NOTE: play() here runs outside a user gesture. Browsers
                 // generally permit this on an already-activated element after
                 // a script-initiated pause(), but this is not guaranteed by
                 // the autoplay spec. If a platform rejects it, the error is
                 // logged and the track stays silent until the next gesture.
+                web_sys::console::log_1(
+                    &format!("track {id}: RESUMING (distance={distance:.1})").into(),
+                );
+                track.audio_el.set_src(&track.url);
+                track.audio_el.set_preload("auto");
                 Self::play_with_rejection_handler(&track.audio_el, id);
             }
         } else {
@@ -182,7 +203,16 @@ impl WebAudioEngine {
             if !track.paused_for_distance && track.silent_secs >= PAUSE_DEBOUNCE_SECS {
                 track.paused_for_distance = true;
                 track.silent_secs = 0.0;
+                web_sys::console::log_1(
+                    &format!("track {id}: PAUSING (distance={distance:.1})").into(),
+                );
+                // pause() alone doesn't stop the browser from downloading.
+                // Clear the src to force the browser to drop the connection.
                 track.audio_el.pause().ok();
+                track.audio_el.set_preload("none");
+                track.audio_el.set_src("");
+                // Force the browser to act on the cleared src
+                track.audio_el.load();
             }
         }
     }
