@@ -232,6 +232,9 @@ fn setup_background(
     for mut sprite in &mut tile_query {
         sprite.color = Color::NONE;
     }
+
+    // Remove the now-empty resource (rgba was taken above)
+    commands.remove_resource::<BackgroundImageData>();
 }
 
 /// Check the activation flag each frame. When the overlay is clicked,

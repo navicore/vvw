@@ -438,6 +438,10 @@ fn cmd_export_maze(album: &str, output: &Path, scale: u32) -> Result<()> {
 
     let maze = &manifest.maze;
     anyhow::ensure!(scale >= 1, "scale must be at least 1");
+    anyhow::ensure!(
+        maze.width > 0 && maze.height > 0,
+        "maze has zero dimensions"
+    );
     let img_w = (maze.width as u32)
         .checked_mul(scale)
         .ok_or_else(|| anyhow::anyhow!("scale too large: image width overflows u32"))?;
