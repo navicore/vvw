@@ -148,7 +148,7 @@ async fn run() -> Result<(), JsValue> {
         .add_systems(
             Update,
             (
-                activate_audio_on_click,
+                activate_audio_on_click.before(web_audio_sync),
                 resume_suspended_audio
                     .after(activate_audio_on_click)
                     .before(web_audio_sync),
