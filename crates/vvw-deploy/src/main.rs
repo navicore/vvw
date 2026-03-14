@@ -437,8 +437,13 @@ fn cmd_export_maze(album: &str, output: &Path, scale: u32) -> Result<()> {
         ron::from_str(&ron_str).with_context(|| format!("parsing {}", manifest_path.display()))?;
 
     let maze = &manifest.maze;
-    let img_w = maze.width as u32 * scale;
-    let img_h = maze.height as u32 * scale;
+    anyhow::ensure!(scale >= 1, "scale must be at least 1");
+    let img_w = (maze.width as u32)
+        .checked_mul(scale)
+        .ok_or_else(|| anyhow::anyhow!("scale too large: image width overflows u32"))?;
+    let img_h = (maze.height as u32)
+        .checked_mul(scale)
+        .ok_or_else(|| anyhow::anyhow!("scale too large: image height overflows u32"))?;
 
     let mut img = GrayImage::new(img_w, img_h);
 

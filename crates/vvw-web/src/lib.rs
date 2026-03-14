@@ -145,7 +145,6 @@ async fn run() -> Result<(), JsValue> {
             ..default()
         }))
         .add_plugins(VvwGamePlugin)
-        .add_systems(Startup, setup_web_maze)
         .add_systems(
             Update,
             (
@@ -158,7 +157,12 @@ async fn run() -> Result<(), JsValue> {
 
     if let Some(data) = background_data {
         app.insert_resource(data);
-        app.add_systems(Startup, setup_background.after(setup_web_maze));
+        app.add_systems(
+            Startup,
+            (setup_web_maze, ApplyDeferred, setup_background).chain(),
+        );
+    } else {
+        app.add_systems(Startup, setup_web_maze);
     }
 
     app.run();
@@ -183,7 +187,7 @@ fn setup_web_maze(
 #[allow(clippy::needless_pass_by_value)]
 fn setup_background(
     mut commands: Commands,
-    bg_data: Res<BackgroundImageData>,
+    mut bg_data: ResMut<BackgroundImageData>,
     maze: Res<Maze>,
     mut images: ResMut<Assets<Image>>,
     mut tile_query: Query<&mut Sprite, With<MazeTile>>,
@@ -191,7 +195,7 @@ fn setup_background(
     use bevy::image::{ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-    // Create Bevy image from decoded RGBA data
+    // Create Bevy image from decoded RGBA data (take ownership to avoid cloning)
     let mut image = Image::new(
         Extent3d {
             width: bg_data.width,
@@ -199,7 +203,7 @@ fn setup_background(
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
-        bg_data.rgba.clone(),
+        std::mem::take(&mut bg_data.rgba),
         TextureFormat::Rgba8UnormSrgb,
         default(),
     );
