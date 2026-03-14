@@ -26,6 +26,8 @@ pub struct TrackAudioState {
     /// Interpolation speed: 2.0 means full fade in 0.5s
     pub fade_speed: f32,
     pub visible: bool,
+    /// Distance from player in tiles (used by platform layer for streaming control)
+    pub distance: f32,
 }
 
 impl Default for TrackAudioState {
@@ -37,6 +39,7 @@ impl Default for TrackAudioState {
             current_pan: 0.0,
             fade_speed: 2.0,
             visible: false,
+            distance: 0.0,
         }
     }
 }
@@ -85,12 +88,14 @@ fn compute_spatial_targets(
         let visible = spatial::has_line_of_sight(&maze, player_pos, *tile_pos);
         state.visible = visible;
 
-        // Always update pan so direction is current when LOS resumes
+        // Always update pan and distance so direction is current when LOS resumes
         let track_world = tile_pos.to_world();
         state.target_pan = spatial::calculate_pan(player_world, track_world);
 
+        let distance = player_pos.distance(*tile_pos);
+        state.distance = distance;
+
         if visible {
-            let distance = player_pos.distance(*tile_pos);
             state.target_gain = spatial::distance_gain(
                 distance,
                 spatial::DEFAULT_HALF_DISTANCE,
