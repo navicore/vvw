@@ -279,8 +279,115 @@ fn save_upload_manifest(audio_dir: &Path, manifest: &HashMap<String, u64>) -> Re
     Ok(())
 }
 
+/// Format a byte count as a human-readable size string.
+fn human_size(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
+    if bytes >= MIB {
+        format!("{:.1} MiB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.0} KiB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+/// Detect content type from file extension.
+fn content_type_for(filename: &str) -> &str {
+    match filename.rsplit('.').next() {
+        Some("audio" | "flac") => "audio/flac",
+        Some("mp3") => "audio/mpeg",
+        Some("ogg") => "audio/ogg",
+        Some("wav") => "audio/wav",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Progress-tracking async reader wrapper.
+/// Prints byte-level upload progress to stderr.
+struct ProgressReader<R> {
+    inner: R,
+    read_bytes: u64,
+    total_bytes: u64,
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for ProgressReader<R> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let result = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if matches!(&result, std::task::Poll::Ready(Ok(()))) {
+            let read = buf.filled().len() - before;
+            self.read_bytes += read as u64;
+            eprint!(
+                "\r    {} / {} ",
+                human_size(self.read_bytes),
+                human_size(self.total_bytes),
+            );
+        }
+        result
+    }
+}
+
+/// Try to create an S3-compatible bucket handle for R2.
+/// Returns `None` if the required environment variables are not set.
+fn try_create_s3_bucket(bucket_name: &str) -> Option<s3::Bucket> {
+    let account_id = std::env::var("CLOUDFLARE_ACCOUNT_ID")
+        .or_else(|_| std::env::var("R2_ACCOUNT_ID"))
+        .ok()?;
+    let access_key = std::env::var("R2_ACCESS_KEY_ID")
+        .or_else(|_| std::env::var("AWS_ACCESS_KEY_ID"))
+        .ok()?;
+    let secret_key = std::env::var("R2_SECRET_ACCESS_KEY")
+        .or_else(|_| std::env::var("AWS_SECRET_ACCESS_KEY"))
+        .ok()?;
+
+    let region = s3::Region::Custom {
+        region: "auto".to_string(),
+        endpoint: format!("https://{account_id}.r2.cloudflarestorage.com"),
+    };
+    let creds =
+        s3::creds::Credentials::new(Some(&access_key), Some(&secret_key), None, None, None).ok()?;
+
+    let bucket = s3::Bucket::new(bucket_name, region, creds).ok()?;
+    Some(*bucket.with_path_style())
+}
+
+/// Upload a file to R2 via the S3 API with byte-level progress.
+async fn s3_put_with_progress(
+    bucket: &s3::Bucket,
+    key: &str,
+    file: &Path,
+    content_type: &str,
+) -> Result<()> {
+    let metadata = std::fs::metadata(file)?;
+    let total_bytes = metadata.len();
+
+    let f = tokio::fs::File::open(file).await?;
+    let mut reader = ProgressReader {
+        inner: f,
+        read_bytes: 0,
+        total_bytes,
+    };
+
+    bucket
+        .put_object_stream_with_content_type(&mut reader, key, content_type)
+        .await
+        .map_err(|e| anyhow::anyhow!("S3 upload failed for {key}: {e}"))?;
+
+    eprintln!(); // newline after progress
+    Ok(())
+}
+
 /// Upload a single file to R2 via wrangler, with retries for transient failures.
-fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
+/// Shows elapsed time so slow uploads are visible on constrained connections.
+fn r2_put(bucket: &str, key: &str, file: &Path, content_type: &str) -> Result<()> {
     const MAX_RETRIES: u32 = 3;
     for attempt in 1..=MAX_RETRIES {
         let status = std::process::Command::new("wrangler")
@@ -292,9 +399,11 @@ fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
                 "--file",
                 &file.to_string_lossy(),
                 "--content-type",
-                "audio/flac",
+                content_type,
                 "--remote",
             ])
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
             .status()?;
         if status.success() {
             return Ok(());
@@ -311,6 +420,21 @@ fn r2_put(bucket: &str, key: &str, file: &Path) -> Result<()> {
 }
 
 fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
+    let s3_bucket = try_create_s3_bucket(bucket);
+    let rt = if s3_bucket.is_some() {
+        eprintln!("  Using S3 API for uploads (progress enabled)");
+        Some(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?,
+        )
+    } else {
+        eprintln!(
+            "  Using wrangler for uploads (set CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY for progress)"
+        );
+        None
+    };
+
     for album in album_names {
         let src = project_dir(album);
         let audio_dir = src.join("audio");
@@ -346,9 +470,17 @@ fn cmd_upload_audio(album_names: &[String], bucket: &str) -> Result<()> {
             }
 
             let key = format!("{album}/audio/{name}");
-            print!("  Uploading {key}...");
-            r2_put(bucket, &key, &entry.path())?;
-            println!(" ok");
+            let ct = content_type_for(&name);
+            eprintln!("  Uploading {key} ({}, {ct})...", human_size(local_size));
+
+            let start = std::time::Instant::now();
+            if let (Some(s3), Some(rt)) = (&s3_bucket, &rt) {
+                rt.block_on(s3_put_with_progress(s3, &key, &entry.path(), ct))?;
+            } else {
+                r2_put(bucket, &key, &entry.path(), ct)?;
+            }
+            let elapsed = start.elapsed();
+            eprintln!("    done in {elapsed:.1?}");
             uploaded += 1;
 
             // Record successful upload
@@ -490,13 +622,14 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::List => {
+            let base = projects_dir();
             let projects = list_projects();
             if projects.is_empty() {
-                println!("No saved projects found in {}", projects_dir().display());
+                println!("No saved projects found in {}", base.display());
             } else {
-                println!("Saved projects:");
+                println!("Saved projects (in {}):", base.display());
                 for name in &projects {
-                    println!("  {name}");
+                    println!("  {name}  {}", base.join(name).display());
                 }
             }
         }

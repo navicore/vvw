@@ -5,6 +5,7 @@ tmp/
 .wrangler/
 **/*.rs.bk
 Cargo.lock
+.env
 
 # IDE
 .idea/
