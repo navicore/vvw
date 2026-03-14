@@ -50,14 +50,15 @@ vvw-game          Platform-independent Bevy plugin (VvwGamePlugin)
 vvw-web           WASM web player (cdylib)
   WebAudioEngine  <audio> → MediaElementSource → GainNode → StereoPanner
   project.rs      Fetch project.ron + _config.json via Fetch API
-  ui.rs           Overlay (click-to-start), album info, build version display
+  ui.rs           Overlay, album/track panels, image URL resolution, build version
   build.rs        Bakes VVW_BUILD_DATETIME into WASM at compile time
   audio resume    Detects suspended/interrupted AudioContext, resumes on gesture
+  index.html      Album detail panel, track info with artwork, canvas focus indicator
 
 vvw-deploy        CLI tool for album creation, assembly, and deployment
-  create          Album creation: scan audio, $EDITOR metadata, maze gen
+  create          Album creation: scan audio + images, $EDITOR metadata, maze gen
   assemble        Copy trunk dist + manifests into deploy dir
-  upload-audio    Push audio files to R2 via wrangler
+  upload-audio    Push audio + image files to R2 via wrangler
   deploy          wrangler pages deploy
   preview         Local dev server via wrangler pages dev
 ```

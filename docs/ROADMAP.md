@@ -14,11 +14,15 @@ Recent additions:
 - **Audio resume on wake** — Detects suspended/interrupted `AudioContext` (after backgrounding, device sleep, iOS Safari interruptions) and resumes on next user gesture.
 - **Lightmap viewport culling** — Lighting computation clipped to camera viewport, reducing raycast work by ~97% on large mazes.
 - **Directional flashlight** — Per-album configurable cone light mode (`player_light_mode: Flashlight` in `project.ron`). Left/Right rotate heading, Up/Down move along heading. Soft-edge falloff on cone boundary.
+- **Album & track info panels** — Clickable album title drops down cover art and description over the canvas. Track info bar shows per-track artwork on click. Chevron indicators signal interactivity. Image deployment workflow scans for cover art and track artwork during album creation.
+- **Canvas focus indicator** — CSS-only dim overlay with arrow key hint when canvas loses focus. Clears on click/tap.
 
 ## Next Up
 
 - **Playback controls**: Start/pause/mute button overlay (see `docs/design/playback-controls.md`)
 - **Player avatar**: Improve the player sprite rendering
+- **Background artwork**: Artist-provided image as maze background (see `docs/design/background-artwork.md`)
+- **Audio download resilience**: Detect and retry zero-byte audio loads (see `docs/design/audio-download-resilience.md`)
 
 ## Known Limitations
 
