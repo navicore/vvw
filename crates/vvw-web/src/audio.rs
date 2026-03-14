@@ -170,6 +170,11 @@ impl WebAudioEngine {
             track.silent_secs = 0.0;
             if track.paused_for_distance {
                 track.paused_for_distance = false;
+                // NOTE: play() here runs outside a user gesture. Browsers
+                // generally permit this on an already-activated element after
+                // a script-initiated pause(), but this is not guaranteed by
+                // the autoplay spec. If a platform rejects it, the error is
+                // logged and the track stays silent until the next gesture.
                 Self::play_with_rejection_handler(&track.audio_el, id);
             }
         } else {
@@ -219,9 +224,7 @@ impl WebAudioEngine {
         if ctx_suspended {
             return true;
         }
-        self.tracks
-            .values()
-            .any(|t| t.audio_el.paused() && !t.paused_for_distance)
+        self.tracks.values().any(|t| t.audio_el.paused())
     }
 
     /// Resume a suspended `AudioContext` and restart any paused `<audio>`
