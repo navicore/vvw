@@ -48,6 +48,10 @@ features = [
     "CustomEventInit",
     "Location",
     "console",
+    "HtmlImageElement",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
+    "ImageData",
 ]
 
 [dev-dependencies]

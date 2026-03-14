@@ -24,6 +24,9 @@ pub struct AlbumMetadata {
     pub description: String,
     pub cover_art_url: Option<String>,
     pub release_date: Option<String>,
+    /// Background artwork URL (maze-textured image rendered behind tiles)
+    #[serde(default)]
+    pub background_url: Option<String>,
     /// External links: (label, url) pairs
     pub links: Vec<(String, String)>,
 }
@@ -144,6 +147,7 @@ mod tests {
                 description: "A test album".to_string(),
                 cover_art_url: Some("https://example.com/cover.png".to_string()),
                 release_date: Some("2025-01-01".to_string()),
+                background_url: None,
                 links: vec![("bandcamp".to_string(), "https://bc.example.com".to_string())],
             },
         };
