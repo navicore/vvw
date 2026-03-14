@@ -168,17 +168,6 @@ impl WebAudioEngine {
             return;
         };
 
-        if !track.distance_logged && distance < f32::MAX {
-            track.distance_logged = true;
-            web_sys::console::log_1(
-                &format!(
-                    "track {id}: distance={distance:.1}, prefetch={PREFETCH_DISTANCE}, paused={}",
-                    track.paused_for_distance
-                )
-                .into(),
-            );
-        }
-
         if distance < PREFETCH_DISTANCE {
             // Within range: resume immediately if paused for distance
             track.silent_secs = 0.0;
@@ -190,9 +179,6 @@ impl WebAudioEngine {
                 // a script-initiated pause(), but this is not guaranteed by
                 // the autoplay spec. If a platform rejects it, the error is
                 // logged and the track stays silent until the next gesture.
-                web_sys::console::log_1(
-                    &format!("track {id}: RESUMING (distance={distance:.1})").into(),
-                );
                 track.audio_el.set_src(&track.url);
                 track.audio_el.set_preload("auto");
                 Self::play_with_rejection_handler(&track.audio_el, id);
@@ -203,9 +189,6 @@ impl WebAudioEngine {
             if !track.paused_for_distance && track.silent_secs >= PAUSE_DEBOUNCE_SECS {
                 track.paused_for_distance = true;
                 track.silent_secs = 0.0;
-                web_sys::console::log_1(
-                    &format!("track {id}: PAUSING (distance={distance:.1})").into(),
-                );
                 // pause() alone doesn't stop the browser from downloading.
                 // Clear the src to force the browser to drop the connection.
                 track.audio_el.pause().ok();
