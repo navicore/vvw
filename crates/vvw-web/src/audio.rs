@@ -184,15 +184,17 @@ impl WebAudioEngine {
     }
 
     /// Call `play()` on an audio element and handle the returned Promise rejection.
-    /// Logs errors to console rather than silently dropping them.
+    /// Uses `spawn_local` to await the promise without leaking a closure.
     fn play_with_rejection_handler(audio_el: &HtmlAudioElement, id: usize) {
         match audio_el.play() {
             Ok(promise) => {
-                let on_err = Closure::once(move |e: JsValue| {
-                    web_sys::console::error_1(&format!("track {id} play() rejected: {e:?}").into());
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) = wasm_bindgen_futures::JsFuture::from(promise).await {
+                        web_sys::console::error_1(
+                            &format!("track {id} play() rejected: {e:?}").into(),
+                        );
+                    }
                 });
-                let _ = promise.catch(&on_err);
-                on_err.forget();
             }
             Err(e) => {
                 web_sys::console::error_1(&format!("track {id} play() failed: {e:?}").into());
@@ -227,12 +229,10 @@ impl WebAudioEngine {
     /// on Android where both the context and elements may have stopped.
     pub fn resume(&mut self) {
         // Re-play audio elements that stopped during backgrounding.
-        // Clear paused_for_distance — update_streaming will re-pause distant
-        // tracks on the next frame once the context is running again.
+        // Skip tracks intentionally paused for distance — update_streaming
+        // will resume them if the player is close enough.
         for (&id, track) in &mut self.tracks {
-            if track.audio_el.paused() {
-                track.paused_for_distance = false;
-                track.silent_secs = 0.0;
+            if track.audio_el.paused() && !track.paused_for_distance {
                 Self::play_with_rejection_handler(&track.audio_el, id);
             }
         }
