@@ -157,6 +157,10 @@ impl WebAudioEngine {
         /// Seconds a track must stay beyond the threshold before pausing.
         const PAUSE_DEBOUNCE_SECS: f32 = 2.0;
 
+        if !self.activated {
+            return;
+        }
+
         let Some(track) = self.tracks.get_mut(&id) else {
             return;
         };
@@ -225,15 +229,11 @@ impl WebAudioEngine {
         // Re-play audio elements that stopped during backgrounding.
         // Clear paused_for_distance — update_streaming will re-pause distant
         // tracks on the next frame once the context is running again.
-        for track in self.tracks.values_mut() {
+        for (&id, track) in &mut self.tracks {
             if track.audio_el.paused() {
                 track.paused_for_distance = false;
                 track.silent_secs = 0.0;
-                if let Err(e) = track.audio_el.play() {
-                    web_sys::console::error_1(
-                        &format!("audio element play() failed: {e:?}").into(),
-                    );
-                }
+                Self::play_with_rejection_handler(&track.audio_el, id);
             }
         }
         match self.ctx.resume() {
