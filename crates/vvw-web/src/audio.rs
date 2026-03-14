@@ -151,9 +151,9 @@ impl WebAudioEngine {
     /// save bandwidth. Tracks within range are resumed immediately.
     /// The Web Audio graph stays wired — only the `<audio>` element pauses/plays.
     pub fn update_streaming(&mut self, id: usize, distance: f32, dt: f32) {
-        /// Distance (in tiles) beyond which streaming is paused.
-        /// Set above `DEFAULT_MAX_DISTANCE` (15) to give a pre-fetch buffer.
-        const PREFETCH_DISTANCE: f32 = 20.0;
+        /// Margin beyond `DEFAULT_MAX_DISTANCE` to start pre-fetching.
+        const PREFETCH_MARGIN: f32 = 5.0;
+        const PREFETCH_DISTANCE: f32 = vvw_core::spatial::DEFAULT_MAX_DISTANCE + PREFETCH_MARGIN;
         /// Seconds a track must stay beyond the threshold before pausing.
         const PAUSE_DEBOUNCE_SECS: f32 = 2.0;
 
@@ -166,16 +166,32 @@ impl WebAudioEngine {
             track.silent_secs = 0.0;
             if track.paused_for_distance {
                 track.paused_for_distance = false;
-                if let Err(e) = track.audio_el.play() {
-                    web_sys::console::error_1(&format!("track {id} resume failed: {e:?}").into());
-                }
+                Self::play_with_rejection_handler(&track.audio_el, id);
             }
         } else {
             // Beyond range: accumulate silence time, pause after debounce
             track.silent_secs += dt;
             if !track.paused_for_distance && track.silent_secs >= PAUSE_DEBOUNCE_SECS {
                 track.paused_for_distance = true;
+                track.silent_secs = 0.0;
                 track.audio_el.pause().ok();
+            }
+        }
+    }
+
+    /// Call `play()` on an audio element and handle the returned Promise rejection.
+    /// Logs errors to console rather than silently dropping them.
+    fn play_with_rejection_handler(audio_el: &HtmlAudioElement, id: usize) {
+        match audio_el.play() {
+            Ok(promise) => {
+                let on_err = Closure::once(move |e: JsValue| {
+                    web_sys::console::error_1(&format!("track {id} play() rejected: {e:?}").into());
+                });
+                let _ = promise.catch(&on_err);
+                on_err.forget();
+            }
+            Err(e) => {
+                web_sys::console::error_1(&format!("track {id} play() failed: {e:?}").into());
             }
         }
     }
@@ -190,25 +206,34 @@ impl WebAudioEngine {
         let state = self.ctx.state();
         let ctx_suspended =
             state != AudioContextState::Running && state != AudioContextState::Closed;
-        let any_paused = self
-            .tracks
+        // A browser-paused element is one that's paused but NOT intentionally
+        // paused for distance. However, if the AudioContext itself is suspended
+        // (e.g. bfcache, tab suspend), always trigger resume — the context
+        // suspension affects all tracks regardless of distance state.
+        if ctx_suspended {
+            return true;
+        }
+        self.tracks
             .values()
-            .any(|t| t.audio_el.paused() && !t.paused_for_distance);
-        ctx_suspended || any_paused
+            .any(|t| t.audio_el.paused() && !t.paused_for_distance)
     }
 
     /// Resume a suspended `AudioContext` and restart any paused `<audio>`
     /// elements. Must be called from a user gesture. Handles bfcache restore
     /// on Android where both the context and elements may have stopped.
-    pub fn resume(&self) {
-        // Re-play audio elements that stopped during backgrounding
-        // (skip tracks intentionally paused for distance)
-        for track in self.tracks.values() {
-            if track.audio_el.paused()
-                && !track.paused_for_distance
-                && let Err(e) = track.audio_el.play()
-            {
-                web_sys::console::error_1(&format!("audio element play() failed: {e:?}").into());
+    pub fn resume(&mut self) {
+        // Re-play audio elements that stopped during backgrounding.
+        // Clear paused_for_distance — update_streaming will re-pause distant
+        // tracks on the next frame once the context is running again.
+        for track in self.tracks.values_mut() {
+            if track.audio_el.paused() {
+                track.paused_for_distance = false;
+                track.silent_secs = 0.0;
+                if let Err(e) = track.audio_el.play() {
+                    web_sys::console::error_1(
+                        &format!("audio element play() failed: {e:?}").into(),
+                    );
+                }
             }
         }
         match self.ctx.resume() {

@@ -149,7 +149,9 @@ async fn run() -> Result<(), JsValue> {
             Update,
             (
                 activate_audio_on_click,
-                resume_suspended_audio.after(activate_audio_on_click),
+                resume_suspended_audio
+                    .after(activate_audio_on_click)
+                    .before(web_audio_sync),
                 web_audio_sync.after(SpatialAudioSet),
                 update_nearest_track_info.after(SpatialAudioSet),
             ),
@@ -254,7 +256,7 @@ fn activate_audio_on_click(flag: Res<AudioActivationFlag>, mut engine: NonSendMu
 /// so we only call resume when a click, touch, or D-pad press is detected.
 #[allow(clippy::needless_pass_by_value)]
 fn resume_suspended_audio(
-    engine: NonSend<WebAudioEngine>,
+    mut engine: NonSendMut<WebAudioEngine>,
     mouse: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
     interactions: Query<&Interaction>,
