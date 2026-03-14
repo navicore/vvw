@@ -82,6 +82,10 @@ clean:
 create-album *ARGS:
     cargo run -p vvw-deploy --release -- create {{ARGS}}
 
+# Export maze layout as a PNG mask for artwork creation
+export-maze ALBUM *ARGS:
+    cargo run -p vvw-deploy --release -- export-maze {{ALBUM}} {{ARGS}}
+
 # --- WASM / Web ---
 
 # Find wasm-opt: prefer PATH, fall back to trunk's cached copy

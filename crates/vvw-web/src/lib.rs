@@ -18,8 +18,8 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    Maze, SpatialAudioSet, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
-    spawn_maze_tiles,
+    Maze, MazeTile, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter,
+    VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -27,6 +27,14 @@ use audio::WebAudioEngine;
 /// Shared flag set by the overlay click handler, read by a Bevy system.
 #[derive(Resource)]
 struct AudioActivationFlag(Arc<AtomicBool>);
+
+/// Decoded background image data, ready to be turned into a Bevy sprite.
+#[derive(Resource)]
+struct BackgroundImageData {
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+}
 
 /// WASM entry point — called automatically when the module loads
 #[cfg_attr(not(test), wasm_bindgen(start))]
@@ -93,13 +101,33 @@ async fn run() -> Result<(), JsValue> {
     // 5. Inject track metadata into DOM for the foldout
     ui::inject_track_metadata(&loaded.manifest.tracks, audio_base_url);
 
-    // 6. Create and run Bevy app
+    // 6. Fetch background image if configured
+    let background_data = if let Some(ref bg_url) = loaded.manifest.album.background_url {
+        let resolved = ui::resolve_bg_url(bg_url, audio_base_url);
+        web_sys::console::log_1(&format!("Loading background: {resolved}").into());
+        match fetch_and_decode_image(&resolved).await {
+            Ok(data) => {
+                web_sys::console::log_1(
+                    &format!("Background loaded: {}×{}", data.width, data.height).into(),
+                );
+                Some(data)
+            }
+            Err(e) => {
+                web_sys::console::error_1(&format!("Background load failed: {e:?}").into());
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 7. Create and run Bevy app
     let maze = loaded.manifest.maze;
     let lighting = loaded.manifest.lighting;
     let physics = loaded.manifest.physics;
 
-    App::new()
-        .insert_resource(maze)
+    let mut app = App::new();
+    app.insert_resource(maze)
         .insert_resource(lighting)
         .insert_resource(physics)
         .insert_resource(TrackIdCounter(next_id))
@@ -117,7 +145,6 @@ async fn run() -> Result<(), JsValue> {
             ..default()
         }))
         .add_plugins(VvwGamePlugin)
-        .add_systems(Startup, setup_web_maze)
         .add_systems(
             Update,
             (
@@ -126,8 +153,19 @@ async fn run() -> Result<(), JsValue> {
                 web_audio_sync.after(SpatialAudioSet),
                 update_nearest_track_info.after(SpatialAudioSet),
             ),
-        )
-        .run();
+        );
+
+    if let Some(data) = background_data {
+        app.insert_resource(data);
+        app.add_systems(
+            Startup,
+            (setup_web_maze, ApplyDeferred, setup_background).chain(),
+        );
+    } else {
+        app.add_systems(Startup, setup_web_maze);
+    }
+
+    app.run();
 
     Ok(())
 }
@@ -141,6 +179,62 @@ fn setup_web_maze(
     physics: Res<vvw_core::physics::PhysicsConfig>,
 ) {
     spawn_maze_tiles(&mut commands, &maze, &lighting, &physics);
+}
+
+/// Spawn the background image and make maze tile sprites transparent.
+/// The background renders at z=-1 (behind tiles), and the lightmap at z=90
+/// still modulates brightness over it. Wall colliders and occluders are unchanged.
+#[allow(clippy::needless_pass_by_value)]
+fn setup_background(
+    mut commands: Commands,
+    mut bg_data: ResMut<BackgroundImageData>,
+    maze: Res<Maze>,
+    mut images: ResMut<Assets<Image>>,
+    mut tile_query: Query<&mut Sprite, With<MazeTile>>,
+) {
+    use bevy::image::{ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+
+    // Create Bevy image from decoded RGBA data (take ownership to avoid cloning)
+    let mut image = Image::new(
+        Extent3d {
+            width: bg_data.width,
+            height: bg_data.height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        std::mem::take(&mut bg_data.rgba),
+        TextureFormat::Rgba8UnormSrgb,
+        default(),
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        ..default()
+    });
+
+    let handle = images.add(image);
+
+    // Size the sprite to cover the full maze
+    let maze_width = maze.width as f32 * TILE_SIZE;
+    let maze_height = maze.height as f32 * TILE_SIZE;
+
+    commands.spawn((
+        Sprite {
+            image: handle,
+            custom_size: Some(Vec2::new(maze_width, maze_height)),
+            ..default()
+        },
+        Transform::from_xyz(maze_width / 2.0, maze_height / 2.0, -1.0),
+    ));
+
+    // Make all maze tile sprites fully transparent
+    for mut sprite in &mut tile_query {
+        sprite.color = Color::NONE;
+    }
+
+    // Remove the now-empty resource (rgba was taken above)
+    commands.remove_resource::<BackgroundImageData>();
 }
 
 /// Check the activation flag each frame. When the overlay is clicked,
@@ -291,4 +385,62 @@ fn setup_overlay_click(ctx: web_sys::AudioContext, flag: Arc<AtomicBool>) -> Res
     closure.forget();
 
     Ok(())
+}
+
+/// Fetch an image URL and decode it to RGBA pixels using the browser's native decoder.
+async fn fetch_and_decode_image(url: &str) -> Result<BackgroundImageData, JsValue> {
+    use js_sys::Promise;
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+
+    // Create an <img> element and load the URL
+    let img = web_sys::HtmlImageElement::new()?;
+    img.set_cross_origin(Some("anonymous"));
+
+    // Wait for load via a promise
+    let load_promise = Promise::new(&mut |resolve, reject| {
+        let on_load = Closure::once(move || {
+            let _ = resolve.call0(&JsValue::NULL);
+        });
+        let on_error = Closure::once(move || {
+            let _ = reject.call1(&JsValue::NULL, &"image load failed".into());
+        });
+        img.set_onload(Some(on_load.as_ref().unchecked_ref()));
+        img.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+        on_load.forget();
+        on_error.forget();
+    });
+
+    img.set_src(url);
+    JsFuture::from(load_promise).await?;
+
+    let w = img.natural_width();
+    let h = img.natural_height();
+    if w == 0 || h == 0 {
+        return Err("image has zero dimensions".into());
+    }
+
+    // Draw to an offscreen canvas to extract RGBA pixels
+    let document = web_sys::window()
+        .ok_or("no window")?
+        .document()
+        .ok_or("no document")?;
+    let canvas: web_sys::HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
+    canvas.set_width(w);
+    canvas.set_height(h);
+
+    let ctx: web_sys::CanvasRenderingContext2d = canvas
+        .get_context("2d")?
+        .ok_or("no 2d context")?
+        .dyn_into()?;
+
+    ctx.draw_image_with_html_image_element(&img, 0.0, 0.0)?;
+    let image_data = ctx.get_image_data(0.0, 0.0, f64::from(w), f64::from(h))?;
+    let rgba = image_data.data().0;
+
+    Ok(BackgroundImageData {
+        rgba,
+        width: w,
+        height: h,
+    })
 }

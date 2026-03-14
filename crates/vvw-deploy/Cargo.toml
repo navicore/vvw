@@ -17,6 +17,7 @@ anyhow.workspace = true
 ron.workspace = true
 serde.workspace = true
 dirs.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [lints]
 workspace = true

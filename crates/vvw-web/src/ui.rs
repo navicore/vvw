@@ -13,6 +13,11 @@ fn resolve_image_url(url: &str, audio_base_url: &str) -> String {
     }
 }
 
+/// Resolve a background image URL (public, called from lib.rs).
+pub fn resolve_bg_url(url: &str, audio_base_url: &str) -> String {
+    resolve_image_url(url, audio_base_url)
+}
+
 /// Escape a string for embedding in a JSON value.
 /// Handles backslash, double-quote, and control characters.
 fn json_escape(s: &str) -> String {

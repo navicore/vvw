@@ -134,6 +134,21 @@ enum Commands {
         output: PathBuf,
     },
 
+    /// Export the maze layout as a PNG mask image for artwork creation.
+    /// White = corridors, dark = walls. Use as a layer mask in GIMP/Photoshop.
+    ExportMaze {
+        /// Album name (from saved projects)
+        album: String,
+
+        /// Output PNG file path
+        #[arg(long, short, default_value = "maze-mask.png")]
+        output: PathBuf,
+
+        /// Pixels per tile (higher = more detail for the artist)
+        #[arg(long, default_value = "16")]
+        scale: u32,
+    },
+
     /// Delete an album's audio files from Cloudflare R2
     DeleteAudio {
         /// Album name whose audio to delete
@@ -402,6 +417,73 @@ fn cmd_wrangler(args: &[&str], label: &str) -> Result<()> {
     Ok(())
 }
 
+/// Export the maze as a PNG mask image.
+/// White pixels = corridors (walkable), dark pixels = walls.
+fn cmd_export_maze(album: &str, output: &Path, scale: u32) -> Result<()> {
+    use anyhow::Context;
+    use image::{GrayImage, Luma};
+    use vvw_core::project::ProjectManifest;
+
+    let manifest_path = project_dir(album).join("project.ron");
+    anyhow::ensure!(
+        manifest_path.exists(),
+        "No project.ron for album '{album}' at {}",
+        manifest_path.display()
+    );
+
+    let ron_str = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("reading {}", manifest_path.display()))?;
+    let manifest: ProjectManifest =
+        ron::from_str(&ron_str).with_context(|| format!("parsing {}", manifest_path.display()))?;
+
+    let maze = &manifest.maze;
+    anyhow::ensure!(scale >= 1, "scale must be at least 1");
+    anyhow::ensure!(
+        maze.width > 0 && maze.height > 0,
+        "maze has zero dimensions"
+    );
+    let img_w = (maze.width as u32)
+        .checked_mul(scale)
+        .ok_or_else(|| anyhow::anyhow!("scale too large: image width overflows u32"))?;
+    let img_h = (maze.height as u32)
+        .checked_mul(scale)
+        .ok_or_else(|| anyhow::anyhow!("scale too large: image height overflows u32"))?;
+
+    let mut img = GrayImage::new(img_w, img_h);
+
+    for ty in 0..maze.height {
+        for tx in 0..maze.width {
+            let is_wall = maze.is_wall(tx as i32, ty as i32);
+            let brightness: u8 = if is_wall { 30 } else { 240 };
+
+            // Fill the scale×scale block for this tile.
+            // Flip Y so the image matches the game's visual orientation
+            // (maze y=0 is bottom in-game, but pixel y=0 is top in PNG).
+            let pixel_y = (maze.height - 1 - ty) as u32 * scale;
+            let pixel_x = tx as u32 * scale;
+            for dy in 0..scale {
+                for dx in 0..scale {
+                    img.put_pixel(pixel_x + dx, pixel_y + dy, Luma([brightness]));
+                }
+            }
+        }
+    }
+
+    img.save(output)
+        .with_context(|| format!("writing {}", output.display()))?;
+
+    println!(
+        "Exported maze mask: {}×{} tiles, {}×{} pixels, scale {}x",
+        maze.width, maze.height, img_w, img_h, scale
+    );
+    println!("  → {}", output.display());
+    println!();
+    println!("Open in GIMP/Photoshop as a layer mask over your artwork.");
+    println!("White = corridors (walkable), dark = walls.");
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -541,6 +623,14 @@ fn main() -> Result<()> {
             } else {
                 println!("Album directory not found: {}", album_dir.display());
             }
+        }
+
+        Commands::ExportMaze {
+            album,
+            output,
+            scale,
+        } => {
+            cmd_export_maze(&album, &output, scale)?;
         }
 
         Commands::DeleteAudio { album, bucket } => {

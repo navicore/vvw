@@ -240,6 +240,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             description: metadata.album.description,
             cover_art_url,
             release_date: metadata.album.release_date,
+            background_url: None,
             links: metadata.album.links,
         },
     };
