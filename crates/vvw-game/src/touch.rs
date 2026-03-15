@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use vvw_core::lighting::{LightMode, LightingConfig};
 
+use crate::modes::{ActiveMode, ModeRegistry};
 use crate::player::{
     Player, PlayerHeading, PlayerMovement, ROTATION_SPEED, handle_player_input, sync_player_light,
 };
@@ -175,6 +176,8 @@ fn handle_touch_input(
     time: Res<Time>,
     state: Res<TouchState>,
     lighting: Res<LightingConfig>,
+    active_mode: Res<ActiveMode>,
+    mode_registry: Res<ModeRegistry>,
     button_query: Query<(&Interaction, &DPadButton)>,
     mut player_query: Query<
         (&PlayerMovement, &mut LinearVelocity, &mut PlayerHeading),
@@ -182,6 +185,11 @@ fn handle_touch_input(
     >,
 ) {
     if !state.touch_detected {
+        return;
+    }
+    if let Some(id) = &active_mode.0
+        && mode_registry.suppresses_movement(id)
+    {
         return;
     }
 
@@ -241,7 +249,13 @@ fn update_dpad_visuals(
         } else {
             DPAD_ALPHA
         };
-        *bg = BackgroundColor(Color::srgba(1.0, 1.0, 1.0, alpha * 0.5));
-        *border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
+        let new_bg = BackgroundColor(Color::srgba(1.0, 1.0, 1.0, alpha * 0.5));
+        let new_border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
+        if *bg != new_bg {
+            *bg = new_bg;
+        }
+        if *border != new_border {
+            *border = new_border;
+        }
     }
 }

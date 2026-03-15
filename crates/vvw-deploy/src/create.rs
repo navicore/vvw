@@ -243,6 +243,8 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             background_url: None,
             links: metadata.album.links,
             sound_visuals: false,
+            mock_feature1: false,
+            mock_feature2: false,
         },
     };
 

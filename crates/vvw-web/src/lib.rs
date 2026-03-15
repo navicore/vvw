@@ -18,8 +18,8 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    Maze, MazeTile, SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon,
-    TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
+    Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, SoundVisualsEnabled, SpatialAudioSet,
+    TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -149,18 +149,26 @@ async fn run() -> Result<(), JsValue> {
             }),
             ..default()
         }))
-        .add_plugins(VvwGamePlugin)
-        .add_systems(
-            Update,
-            (
-                activate_audio_on_click.before(web_audio_sync),
-                resume_suspended_audio
-                    .after(activate_audio_on_click)
-                    .before(web_audio_sync),
-                web_audio_sync.after(SpatialAudioSet),
-                update_nearest_track_info.after(SpatialAudioSet),
-            ),
-        );
+        .add_plugins(VvwGamePlugin);
+
+    if loaded.manifest.album.mock_feature1 {
+        app.add_plugins(MockFeature1Plugin);
+    }
+    if loaded.manifest.album.mock_feature2 {
+        app.add_plugins(MockFeature2Plugin);
+    }
+
+    app.add_systems(
+        Update,
+        (
+            activate_audio_on_click.before(web_audio_sync),
+            resume_suspended_audio
+                .after(activate_audio_on_click)
+                .before(web_audio_sync),
+            web_audio_sync.after(SpatialAudioSet),
+            update_nearest_track_info.after(SpatialAudioSet),
+        ),
+    );
 
     if let Some(data) = background_data {
         app.insert_resource(data);
