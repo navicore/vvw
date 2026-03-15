@@ -3,9 +3,11 @@
 //! Audio files are NOT included — they go to R2 via the `upload-audio` command.
 //! The player discovers the R2 URL from `_config.json`.
 
+use std::fmt::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use vvw_core::project::ProjectManifest;
 
 use crate::{project_dir, safe_album_path, trunk_build};
 
@@ -49,6 +51,10 @@ pub fn assemble(
         }
     }
 
+    // Read the template index.html once
+    let template_html = std::fs::read_to_string(dist.join("index.html"))
+        .context("Failed to read dist/index.html")?;
+
     // Copy each album's project.ron (no audio — that goes to R2)
     for album in albums {
         let src = project_dir(album);
@@ -66,9 +72,10 @@ pub fn assemble(
         std::fs::copy(src.join("project.ron"), album_out.join("project.ron"))
             .with_context(|| format!("Failed to copy project.ron for '{album}'"))?;
 
-        // Copy index.html into album dir so /AlbumName/ serves the SPA
-        std::fs::copy(dist.join("index.html"), album_out.join("index.html"))
-            .with_context(|| format!("Failed to copy index.html for '{album}'"))?;
+        // Inject OG meta tags into index.html from album metadata
+        let album_html = inject_og_tags(&template_html, &src, album, audio_base_url)?;
+        std::fs::write(album_out.join("index.html"), album_html)
+            .with_context(|| format!("Failed to write index.html for '{album}'"))?;
 
         if audio_base_url.is_none() {
             // Local preview: copy audio files into deploy dir
@@ -112,6 +119,97 @@ pub fn assemble(
     std::fs::write(output.join("_routes.json"), routes).context("Failed to write _routes.json")?;
 
     Ok(())
+}
+
+/// Read album metadata from `project.ron` and inject OG meta tags into `index.html`.
+fn inject_og_tags(
+    template: &str,
+    project_dir: &Path,
+    album: &str,
+    audio_base_url: Option<&str>,
+) -> Result<String> {
+    let ron_text = std::fs::read_to_string(project_dir.join("project.ron"))
+        .with_context(|| format!("Failed to read project.ron for '{album}'"))?;
+    let manifest: ProjectManifest = ron::from_str(&ron_text)
+        .with_context(|| format!("Failed to parse project.ron for '{album}'"))?;
+
+    let meta = &manifest.album;
+    let title_text = if meta.artist.is_empty() {
+        meta.title.clone()
+    } else {
+        format!("{} — {}", meta.title, meta.artist)
+    };
+
+    let escaped_title = html_escape(&title_text);
+    let escaped_desc = html_escape(&meta.description);
+
+    let mut tags = String::new();
+    let _ = writeln!(
+        tags,
+        "    <meta property=\"og:title\" content=\"{escaped_title}\">"
+    );
+    if !meta.description.is_empty() {
+        let _ = writeln!(
+            tags,
+            "    <meta property=\"og:description\" content=\"{escaped_desc}\">"
+        );
+    }
+    let _ = writeln!(tags, "    <meta property=\"og:type\" content=\"website\">");
+
+    // Resolve cover art URL: relative paths get prefixed with audio_base_url
+    if let Some(ref cover) = meta.cover_art_url {
+        let resolved = html_escape(&resolve_url(cover, audio_base_url));
+        let _ = writeln!(
+            tags,
+            "    <meta property=\"og:image\" content=\"{resolved}\">"
+        );
+        let _ = writeln!(
+            tags,
+            "    <meta name=\"twitter:card\" content=\"summary_large_image\">"
+        );
+    } else {
+        let _ = writeln!(tags, "    <meta name=\"twitter:card\" content=\"summary\">");
+    }
+
+    // Duplicate title/description for Twitter
+    let _ = writeln!(
+        tags,
+        "    <meta name=\"twitter:title\" content=\"{escaped_title}\">"
+    );
+    if !meta.description.is_empty() {
+        let _ = writeln!(
+            tags,
+            "    <meta name=\"twitter:description\" content=\"{escaped_desc}\">"
+        );
+    }
+
+    // Insert tags before </head> and replace <title>
+    let mut html = template.replace("</head>", &format!("{tags}</head>"));
+    html = html.replace(
+        "<title>VVW Player</title>",
+        &format!("<title>{}</title>", html_escape(&title_text)),
+    );
+
+    Ok(html)
+}
+
+/// Resolve a potentially relative URL against the audio base URL.
+fn resolve_url(url: &str, audio_base_url: Option<&str>) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else if let Some(base) = audio_base_url {
+        format!("{base}{url}")
+    } else {
+        format!("audio/{url}")
+    }
+}
+
+/// Escape HTML attribute values.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Recursively copy all files from `src` into `dst` (both must be directories).
