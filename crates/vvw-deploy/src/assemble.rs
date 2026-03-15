@@ -252,9 +252,11 @@ fn resolve_url(url: &str, album: &str, audio_base_url: Option<&str>) -> String {
         url.to_string()
     } else if let Some(base) = audio_base_url {
         let base = base.trim_end_matches('/');
-        format!("{base}/{album}/audio/{url}")
+        let encoded_album = percent_encode(album);
+        let encoded_file = percent_encode(url);
+        format!("{base}/{encoded_album}/audio/{encoded_file}")
     } else {
-        format!("audio/{url}")
+        format!("audio/{}", percent_encode(url))
     }
 }
 
