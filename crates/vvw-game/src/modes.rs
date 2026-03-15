@@ -250,7 +250,13 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
         return false;
     }
 
-    if state.tracking && count >= 2 {
+    if state.tracking && count > 2 {
+        // More fingers arrived — not a two-finger tap
+        state.tracking = false;
+        return false;
+    }
+
+    if state.tracking && count == 2 {
         // Still holding — check for excessive movement (pinch/drag)
         for (id, start_pos) in &state.positions {
             if let Some(touch) = touches.get_pressed(*id)
@@ -269,8 +275,21 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
     }
 
     if state.tracking && count <= 1 {
-        // Fingers lifting (all gone, or one still lingering). Accept if
-        // duration was short — fingers rarely lift at exactly the same time.
+        // Fingers lifting — check that released fingers didn't move too far
+        // (catches fast swipes that lift within a single frame)
+        for (id, start_pos) in &state.positions {
+            for released in touches.iter_just_released() {
+                if released.id() == *id
+                    && released.position().distance(*start_pos) > TAP_MOVE_THRESHOLD
+                {
+                    state.tracking = false;
+                    return false;
+                }
+            }
+        }
+
+        // Accept if duration was short — fingers rarely lift at exactly
+        // the same time.
         state.tracking = false;
         let duration = now - state.start_time;
         if duration <= TAP_MAX_DURATION {
@@ -432,10 +451,10 @@ fn handle_action_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        if registry.modes.is_empty() {
+        let Some(mode) = registry.modes.get(selected.0) else {
             return;
-        }
-        let target = &registry.modes[selected.0].id;
+        };
+        let target = &mode.id;
         if active.0.as_ref() == Some(target) {
             active.0 = None;
         } else {
@@ -445,6 +464,8 @@ fn handle_action_click(
 }
 
 /// Update button visuals based on active state and interaction.
+/// Only writes components when values actually change to avoid spurious
+/// change-detection signals every frame.
 #[allow(clippy::needless_pass_by_value)]
 fn update_action_visual(
     active: Res<ActiveMode>,
@@ -463,8 +484,14 @@ fn update_action_visual(
         } else {
             SURFACE_ALPHA
         };
-        *bg = BackgroundColor(Color::srgba(0.5, 0.5, 1.0, alpha * 0.5));
-        *border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
+        let new_bg = BackgroundColor(Color::srgba(0.5, 0.5, 1.0, alpha * 0.5));
+        let new_border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
+        if *bg != new_bg {
+            *bg = new_bg;
+        }
+        if *border != new_border {
+            *border = new_border;
+        }
     }
 
     // Green border when the selected mode is active, dim when not
@@ -474,16 +501,22 @@ fn update_action_visual(
         .is_some_and(|m| active.0.as_ref() == Some(&m.id));
 
     for (interaction, mut border, mut bg) in &mut action_query {
-        if selected_is_active {
-            *border = BorderColor::all(Color::srgba(0.2, 0.8, 0.3, 0.8));
+        let new_border = if selected_is_active {
+            BorderColor::all(Color::srgba(0.2, 0.8, 0.3, 0.8))
         } else {
             let alpha = if *interaction == Interaction::Pressed {
                 SURFACE_PRESSED_ALPHA
             } else {
                 SURFACE_ALPHA
             };
-            *border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
+            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha))
+        };
+        let new_bg = BackgroundColor(Color::NONE);
+        if *border != new_border {
+            *border = new_border;
         }
-        *bg = BackgroundColor(Color::NONE);
+        if *bg != new_bg {
+            *bg = new_bg;
+        }
     }
 }
