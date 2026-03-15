@@ -203,6 +203,9 @@ fn log_mode_changes(active: Res<ActiveMode>) {
 // ── Gesture detection ──────────────────────────────────────────────────────
 
 /// Toggle control surface on Tab key or two-finger tap.
+///
+/// Takes `Option<ResMut<ActiveMode>>` via a helper to avoid borrowing
+/// `ResMut` (and triggering change detection) on frames where we don't write.
 #[allow(clippy::needless_pass_by_value)]
 fn detect_toggle_gesture(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -210,7 +213,8 @@ fn detect_toggle_gesture(
     time: Res<Time>,
     mut tap_state: ResMut<TwoFingerTapState>,
     mut visible: ResMut<ControlSurfaceVisible>,
-    mut active: ResMut<ActiveMode>,
+    active: Res<ActiveMode>,
+    mut commands: Commands,
 ) {
     let toggled = keyboard.just_pressed(KeyCode::Tab)
         || detect_two_finger_tap(&touches, &time, &mut tap_state);
@@ -219,7 +223,7 @@ fn detect_toggle_gesture(
         visible.0 = !visible.0;
         // Dismissing the surface clears any active mode
         if !visible.0 && active.0.is_some() {
-            active.0 = None;
+            commands.insert_resource(ActiveMode(None));
         }
     }
 }
@@ -292,24 +296,21 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
     }
 
     if state.tracking && count <= 1 {
-        // Fingers lifting — check last-known positions for both fingers
-        // (covers the case where the first finger lifted on a prior frame)
+        // Update last_positions from just-released events (covers same-frame
+        // lift where the count==2 hold branch never ran this frame)
+        for (i, (id, _)) in state.positions.iter().enumerate() {
+            for released in touches.iter_just_released() {
+                if released.id() == *id {
+                    state.last_positions[i] = released.position();
+                }
+            }
+        }
+
+        // Check final positions for both fingers against start positions
         for (i, (_, start_pos)) in state.positions.iter().enumerate() {
             if state.last_positions[i].distance(*start_pos) > TAP_MOVE_THRESHOLD {
                 state.tracking = false;
                 return false;
-            }
-        }
-
-        // Also check just-released positions (catches fast same-frame swipes)
-        for (id, start_pos) in &state.positions {
-            for released in touches.iter_just_released() {
-                if released.id() == *id
-                    && released.position().distance(*start_pos) > TAP_MOVE_THRESHOLD
-                {
-                    state.tracking = false;
-                    return false;
-                }
             }
         }
 
@@ -330,12 +331,13 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
 fn detect_dismiss(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut visible: ResMut<ControlSurfaceVisible>,
-    mut active: ResMut<ActiveMode>,
+    active: Res<ActiveMode>,
+    mut commands: Commands,
 ) {
     if keyboard.just_pressed(KeyCode::Escape) && visible.0 {
         visible.0 = false;
         if active.0.is_some() {
-            active.0 = None;
+            commands.insert_resource(ActiveMode(None));
         }
     }
 }
@@ -366,6 +368,7 @@ fn spawn_control_surface(mut commands: Commands, registry: Res<ModeRegistry>) {
                 ..default()
             },
             Visibility::Hidden,
+            ZIndex(10),
         ))
         .id();
 
@@ -469,13 +472,17 @@ fn handle_cycle_click(
 #[allow(clippy::needless_pass_by_value)]
 fn handle_action_click(
     registry: Res<ModeRegistry>,
-    selected: Res<SelectedModeIndex>,
+    mut selected: ResMut<SelectedModeIndex>,
     mut active: ResMut<ActiveMode>,
     action_query: Query<&Interaction, (Changed<Interaction>, With<ActionButton>)>,
 ) {
     for interaction in &action_query {
         if *interaction != Interaction::Pressed {
             continue;
+        }
+        // Clamp index if registry shrank
+        if selected.0 >= registry.modes.len() {
+            selected.0 = 0;
         }
         let Some(mode) = registry.modes.get(selected.0) else {
             return;

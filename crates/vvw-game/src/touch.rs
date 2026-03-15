@@ -249,7 +249,13 @@ fn update_dpad_visuals(
         } else {
             DPAD_ALPHA
         };
-        *bg = BackgroundColor(Color::srgba(1.0, 1.0, 1.0, alpha * 0.5));
-        *border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
+        let new_bg = BackgroundColor(Color::srgba(1.0, 1.0, 1.0, alpha * 0.5));
+        let new_border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
+        if *bg != new_bg {
+            *bg = new_bg;
+        }
+        if *border != new_border {
+            *border = new_border;
+        }
     }
 }
