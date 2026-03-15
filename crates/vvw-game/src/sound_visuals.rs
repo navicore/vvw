@@ -47,16 +47,25 @@ const PULSE_SPEED: f32 = 10.0;
 /// How much each arc vibrates around its fixed position (fraction of spacing).
 const VIBRATE_AMPLITUDE: f32 = 0.08;
 
+/// Alpha change threshold — skip material mutation when delta is below this.
+const ALPHA_EPSILON: f32 = 0.005;
+
 /// Marker component for sound visual arcs.
 #[derive(Component)]
 struct SoundArc {
     /// Which index (`0..MAX_ARCS`) this arc is within its parent track.
     index: usize,
+    /// Last alpha written to the material, used to skip redundant mutations.
+    last_alpha: f32,
 }
 
 /// Marker on `TrackIcon` entities that have had their arc children spawned.
 #[derive(Component)]
 struct SoundVisualsSpawned;
+
+/// Cached arc mesh handles, built once and reused across maze respawns.
+#[derive(Resource)]
+struct ArcMeshes(Vec<Handle<Mesh>>);
 
 pub struct SoundVisualsPlugin;
 
@@ -64,7 +73,10 @@ impl Plugin for SoundVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SoundVisualsEnabled>().add_systems(
             Update,
-            (spawn_arcs, update_arcs.after(SpatialAudioSet))
+            (
+                spawn_arcs.before(update_arcs),
+                update_arcs.after(SpatialAudioSet),
+            )
                 .run_if(|enabled: Res<SoundVisualsEnabled>| enabled.0),
         );
     }
@@ -124,6 +136,7 @@ fn build_arc_mesh(sweep: f32, radius: f32) -> Mesh {
 fn spawn_arcs(
     mut commands: Commands,
     query: Query<Entity, (With<TrackIcon>, Without<SoundVisualsSpawned>)>,
+    arc_meshes: Option<Res<ArcMeshes>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
@@ -131,28 +144,38 @@ fn spawn_arcs(
         return;
     }
 
-    // Each arc gets a progressively longer sweep and larger radius
-    // so curvature flattens naturally as waves radiate outward
-    let arc_meshes: Vec<Handle<Mesh>> = (0..MAX_ARCS)
-        .map(|i| {
-            let scale = i as f32 + 1.0; // 1, 2, 3
-            let radius = ARC_RADIUS * scale;
-            meshes.add(build_arc_mesh(ARC_SWEEP * scale, radius))
-        })
-        .collect();
+    // Lazily initialize arc meshes on first use
+    let arc_mesh_handles = arc_meshes.as_ref().map_or_else(
+        || {
+            let handles: Vec<Handle<Mesh>> = (0..MAX_ARCS)
+                .map(|i| {
+                    let scale = i as f32 + 1.0;
+                    let radius = ARC_RADIUS * scale;
+                    meshes.add(build_arc_mesh(ARC_SWEEP * scale, radius))
+                })
+                .collect();
+            commands.insert_resource(ArcMeshes(handles.clone()));
+            handles
+        },
+        |cached| cached.0.clone(),
+    );
 
     for entity in &query {
         commands.entity(entity).insert(SoundVisualsSpawned);
 
-        for (i, arc_mesh) in arc_meshes.iter().enumerate() {
+        for (i, arc_mesh) in arc_mesh_handles.iter().enumerate() {
             // Each arc gets its own material so alpha can be independently modulated
             let mat = materials.add(ColorMaterial::from(Color::srgba(0.0, 0.0, 0.0, 0.0)));
             commands.entity(entity).with_child((
                 Mesh2d(arc_mesh.clone()),
                 MeshMaterial2d(mat),
-                Transform::from_xyz(0.0, 0.0, 5.0),
+                // Local z=0.5 → world z=1.5 (parent TrackIcon is at z=1, player at z=2)
+                Transform::from_xyz(0.0, 0.0, 0.5),
                 Visibility::Hidden,
-                SoundArc { index: i },
+                SoundArc {
+                    index: i,
+                    last_alpha: 0.0,
+                },
             ));
         }
     }
@@ -169,7 +192,7 @@ fn update_arcs(
     >,
     mut arc_query: Query<
         (
-            &SoundArc,
+            &mut SoundArc,
             &ChildOf,
             &mut Transform,
             &mut Visibility,
@@ -186,7 +209,7 @@ fn update_arcs(
     // Wrap elapsed time to avoid f32 precision loss in long sessions (~4.7h+)
     let t = (time.elapsed_secs_f64() % (std::f64::consts::TAU * 1000.0)) as f32;
 
-    for (arc, child_of, mut tf, mut vis, mat_handle) in &mut arc_query {
+    for (mut arc, child_of, mut tf, mut vis, mat_handle) in &mut arc_query {
         let parent = child_of.parent();
 
         let Ok((track_tf, audio_state)) = track_query.get(parent) else {
@@ -248,8 +271,13 @@ fn update_arcs(
 
         // Alpha: modulate with gain, slight flicker from vibration
         let alpha = BASE_ALPHA * gain.min(1.0) * 0.15f32.mul_add(pulse01, 0.85);
-        if let Some(mat) = materials.get_mut(mat_handle.id()) {
-            mat.color = Color::srgba(0.0, 0.0, 0.0, alpha);
+
+        // Only mutate material when alpha has changed enough to matter
+        if (alpha - arc.last_alpha).abs() > ALPHA_EPSILON {
+            if let Some(mat) = materials.get_mut(mat_handle.id()) {
+                mat.color = Color::srgba(0.0, 0.0, 0.0, alpha);
+            }
+            arc.last_alpha = alpha;
         }
     }
 }
