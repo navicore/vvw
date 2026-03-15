@@ -13,7 +13,7 @@ External boundaries:
 ## Solution Strategy
 
 - **Rust + Bevy 0.18** — game engine compiled to WASM via Trunk. Shared `VvwGamePlugin` is platform-independent.
-- **Avian2d** — 2D physics (zero-gravity, collision-only for maze walls).
+- **Avian2d** — 2D physics (zero-gravity, collision for maze walls and track icons).
 - **vvw-light** — custom sprite-based 2D lighting with point lights and occluder grid. Not Bevy's built-in lighting.
 - **RON** — project manifest format (`project.ron`). Backward-compatible via `#[serde(default)]`.
 - **Web Audio API** — `MediaElementAudioSourceNode` for streaming playback. No full download before play.
@@ -29,7 +29,7 @@ vvw-core          Platform-agnostic types and algorithms (no Bevy)
   spatial         Bresenham LOS, distance-to-gain curve, stereo panning
   mazegen         Procedural maze generation (room + corridor growth)
   project         ProjectManifest serde, AlbumMetadata, TrackMetadata
-  physics         PhysicsConfig (player speed, friction, restitution, damping)
+  physics         PhysicsConfig (player speed, friction, restitution, damping, track_restitution)
   lighting        LightingConfig (ambient, player, track light params, LightMode)
 
 vvw-light         2D lighting plugin for Bevy
@@ -41,14 +41,16 @@ vvw-light         2D lighting plugin for Bevy
   render          Viewport-culled lightmap: only tiles visible to camera are computed
 
 vvw-game          Platform-independent Bevy plugin (VvwGamePlugin)
-  MazePlugin      Tile rendering, wall colliders, occluder grid sync
+  MazePlugin      Tile rendering, wall + track icon colliders, occluder grid sync
   PlayerPlugin    Avian2d body, leafwing-input-manager, movement
   SpatialAudio    compute_spatial_targets → interpolate → TrackAudioState
   CameraPlugin    Dead-zone follow camera + Lighting2dPlugin
   TouchControls   D-pad overlay for mobile (Bevy Interaction hit testing)
+  SoundVisuals    Gain-driven arc animations radiating from audible tracks
 
 vvw-web           WASM web player (cdylib)
   WebAudioEngine  <audio> → MediaElementSource → GainNode → StereoPanner
+                  Lazy streaming: pauses/clears distant tracks, resumes on approach
   project.rs      Fetch project.ron + _config.json via Fetch API
   ui.rs           Overlay, album/track panels, image URL resolution, build version
   build.rs        Bakes VVW_BUILD_DATETIME into WASM at compile time
@@ -57,8 +59,8 @@ vvw-web           WASM web player (cdylib)
 
 vvw-deploy        CLI tool for album creation, assembly, and deployment
   create          Album creation: scan audio + images, $EDITOR metadata, maze gen
-  assemble        Copy trunk dist + manifests into deploy dir
-  upload-audio    Push audio + image files to R2 via wrangler
+  assemble        Copy trunk dist + manifests, inject OG/Twitter meta tags (--site-url)
+  upload-audio    Push audio + image files to R2 via rust-s3 (wrangler fallback)
   deploy          wrangler pages deploy
   preview         Local dev server via wrangler pages dev
 ```

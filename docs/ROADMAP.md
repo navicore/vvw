@@ -17,16 +17,20 @@ Recent additions:
 - **Album & track info panels** — Clickable album title drops down cover art and description over the canvas. Track info bar shows per-track artwork on click. Chevron indicators signal interactivity. Image deployment workflow scans for cover art and track artwork during album creation.
 - **Canvas focus indicator** — CSS-only dim overlay with arrow key hint when canvas loses focus. Clears on click/tap.
 - **Sound wave visuals** — Per-album `)))` arc animations radiating from audible track sources toward the player. Count scales with gain (1–3 arcs), arcs vibrate in place, outer arcs are longer/flatter than inner. Enabled via `sound_visuals: true` in album metadata.
+- **Background artwork** — Artist-provided image rendered behind maze tiles at z=-1 under the lightmap. Tiles set to `Color::NONE`. Configured via `background_url` in album metadata.
+- **Lazy audio streaming** — Tracks beyond prefetch distance have src cleared and load() called to stop downloads. 2s debounce before pausing; immediate resume when within range.
+- **R2 direct upload** — rust-s3 with native-tls, 10 retries with exponential backoff. Falls back to wrangler if S3 env vars not set.
+- **OG meta tags** — Open Graph and Twitter Card meta tags injected into per-album `index.html` at assembly time. Cover art, title, artist, description. `--site-url` CLI arg for canonical URLs.
+- **Solid track icons** — Track icons are physics colliders (60% tile size). Player bounces off them with configurable `track_restitution`.
 
 ## Next Up
 
 - **Playback controls**: Start/pause/mute button overlay (see `docs/design/playback-controls.md`)
 - **Player avatar**: Improve the player sprite rendering
-- **Background artwork**: Artist-provided image as maze background (see `docs/design/background-artwork.md`)
 - **Audio download resilience**: Detect and retry zero-byte audio loads (see `docs/design/audio-download-resilience.md`)
 
 ## Known Limitations
 
 - No visual maze editor — layout is fully procedural
 - No real-time lighting preview — tuning requires deploy-and-check cycles
-- Large audio uploads to R2 can time out (wrangler retries help)
+- Large audio uploads to R2 can time out (rust-s3 retries with exponential backoff; wrangler fallback also retries)

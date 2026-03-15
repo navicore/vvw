@@ -4,7 +4,6 @@ tmp/
 .claude/
 .wrangler/
 **/*.rs.bk
-Cargo.lock
 .env
 
 # IDE
