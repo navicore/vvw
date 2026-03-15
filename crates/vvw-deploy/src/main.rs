@@ -44,6 +44,10 @@ enum Commands {
         /// and a _config.json is written pointing the player to R2.
         #[arg(long)]
         audio_base_url: Option<String>,
+
+        /// Site base URL for og:url tags (e.g. `https://vvw-2c3.pages.dev`).
+        #[arg(long)]
+        site_url: Option<String>,
     },
 
     /// Upload audio files to Cloudflare R2
@@ -616,6 +620,7 @@ fn main() -> Result<()> {
             all,
             output,
             audio_base_url,
+            site_url,
         } => {
             let album_names = resolve_albums(albums, all)?;
             let workspace_root = trunk_build::find_workspace_root()?;
@@ -624,6 +629,7 @@ fn main() -> Result<()> {
                 &album_names,
                 &output,
                 audio_base_url.as_deref(),
+                site_url.as_deref(),
             )?;
             println!(
                 "Assembled {} album(s) into {}",
