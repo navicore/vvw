@@ -32,6 +32,12 @@ pub struct AlbumMetadata {
     /// Enable sound wave visuals (pulsing arcs radiating from track sources)
     #[serde(default)]
     pub sound_visuals: bool,
+    /// Mock feature 1 — registers a mode for testing the interaction modes framework
+    #[serde(default)]
+    pub mock_feature1: bool,
+    /// Mock feature 2 — registers a second mode for testing mode cycling
+    #[serde(default)]
+    pub mock_feature2: bool,
 }
 
 /// Per-track metadata for web publishing
@@ -153,6 +159,8 @@ mod tests {
                 background_url: None,
                 links: vec![("bandcamp".to_string(), "https://bc.example.com".to_string())],
                 sound_visuals: false,
+                mock_feature1: false,
+                mock_feature2: false,
             },
         };
 

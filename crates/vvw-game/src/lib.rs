@@ -13,6 +13,7 @@ mod audio;
 mod camera;
 mod maze;
 pub mod mazegen;
+mod modes;
 mod player;
 mod sound_visuals;
 mod spatial;
@@ -23,6 +24,10 @@ pub use audio::{SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackIdCou
 pub use camera::{CameraPlugin, GameCamera};
 pub use maze::{
     Maze, MazeChanged, MazePlugin, MazeTile, TrackIcon, TrackLight, colors, spawn_maze_tiles,
+};
+pub use modes::{
+    ActiveMode, InteractionModesPlugin, MockFeature1Plugin, MockFeature2Plugin, ModeId,
+    ModeRegistry,
 };
 pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};
 pub use sound_visuals::SoundVisualsEnabled;
@@ -50,6 +55,7 @@ impl Plugin for VvwGamePlugin {
             CameraPlugin,
             touch::TouchControlsPlugin,
             sound_visuals::SoundVisualsPlugin,
+            InteractionModesPlugin,
         ));
     }
 }

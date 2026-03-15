@@ -9,6 +9,7 @@ use vvw_core::lighting::{LightMode, LightingConfig};
 use vvw_core::physics::PhysicsConfig;
 
 use crate::maze::Maze;
+use crate::modes::{ActiveMode, ModeRegistry};
 use crate::tiles::{TILE_SIZE, TilePos};
 
 /// Marker component for the player entity
@@ -155,6 +156,8 @@ pub const ROTATION_SPEED: f32 = 3.0;
 pub fn handle_player_input(
     time: Res<Time>,
     lighting: Res<LightingConfig>,
+    active_mode: Res<ActiveMode>,
+    mode_registry: Res<ModeRegistry>,
     mut query: Query<
         (
             &ActionState<PlayerAction>,
@@ -165,6 +168,11 @@ pub fn handle_player_input(
         With<Player>,
     >,
 ) {
+    if let Some(id) = &active_mode.0
+        && mode_registry.suppresses_movement(id)
+    {
+        return;
+    }
     let dt = time.delta_secs();
     let is_flashlight = lighting.player_light_mode == LightMode::Flashlight;
 

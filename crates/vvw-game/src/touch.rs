@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use vvw_core::lighting::{LightMode, LightingConfig};
 
+use crate::modes::{ActiveMode, ModeRegistry};
 use crate::player::{
     Player, PlayerHeading, PlayerMovement, ROTATION_SPEED, handle_player_input, sync_player_light,
 };
@@ -175,6 +176,8 @@ fn handle_touch_input(
     time: Res<Time>,
     state: Res<TouchState>,
     lighting: Res<LightingConfig>,
+    active_mode: Res<ActiveMode>,
+    mode_registry: Res<ModeRegistry>,
     button_query: Query<(&Interaction, &DPadButton)>,
     mut player_query: Query<
         (&PlayerMovement, &mut LinearVelocity, &mut PlayerHeading),
@@ -182,6 +185,11 @@ fn handle_touch_input(
     >,
 ) {
     if !state.touch_detected {
+        return;
+    }
+    if let Some(id) = &active_mode.0
+        && mode_registry.suppresses_movement(id)
+    {
         return;
     }
 
