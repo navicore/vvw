@@ -12,8 +12,8 @@ pub struct PhysicsConfig {
     /// Player body friction
     pub player_friction: f32,
     /// Player body bounciness (0 = no bounce, 1 = full bounce).
-    /// Note: values above ~0.7 with low damping can cause sustained bounce
-    /// cycles in corridors narrower than 2 tiles.
+    /// Note: values above ~0.8 combined with damping below ~2.0 can cause
+    /// sustained bounce cycles in corridors narrower than 2 tiles.
     pub player_restitution: f32,
     /// Linear velocity damping — higher values stop the player faster
     pub player_linear_damping: f32,

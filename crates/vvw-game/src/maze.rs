@@ -102,6 +102,7 @@ pub fn spawn_maze_tiles(
 
             if tile == TileKind::TrackIcon {
                 let track_id = maze.track_ids.get(&(x, y)).copied().unwrap_or(0);
+                // Collider is 60% of tile — player bounces off but can squeeze past
                 let icon_size = TILE_SIZE * 0.6;
                 let mut icon = commands.spawn((
                     Sprite {

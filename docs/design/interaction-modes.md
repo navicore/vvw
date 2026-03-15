@@ -46,7 +46,7 @@ Feature plugins register their mode during app setup (e.g., `BreadcrumbPlugin` i
 
 ### Mode lifecycle events (vvw-game)
 
-Each feature plugin listens for `ModeActivated` / `ModeDeactivated` with its own `ModeId` and runs its enter/exit logic (e.g., breadcrumbs starts recording, sculpting enables draw gestures). The mode system does not know what each mode does — it only manages activation state and UI.
+Each feature plugin reacts to mode changes via `Changed<ActiveMode>` queries rather than reading `ModeActivated`/`ModeDeactivated` events directly. This avoids a double-buffering race: if `ActiveMode` is cleared in the same frame as a `ModeDeactivated` event, plugins gated by `run_if(active_mode_is(X))` would miss the event because `ActiveMode` is already `None` when they run. By reacting to `Changed<ActiveMode>`, plugins see the transition in the same frame it occurs. The mode system does not know what each mode does — it only manages activation state and UI.
 
 ### Input suppression
 

@@ -51,7 +51,7 @@ A `Mesh2d` rectangle stretched between start and end positions. Semi-transparent
 - Look up the existing `WebTrack` for `source_id`.
 - Create a new `GainNode` and `Panner`, connected to `ctx.destination()`.
 - The source's `MediaElementAudioSourceNode` is already connected to `source.gain_node`. Web Audio allows adding a second connection: the source audio element's media source connects to the new gain node too.
-- Register a new `WebTrack` entry under `new_id` (sharing the `HtmlAudioElement` reference but with independent gain/pan nodes).
+- Register a new `WebTrack` entry under `new_id` with independent gain/pan nodes but **no element ownership**. The forked entry must not call `pause()`, `play()`, `set_src()`, or `load()` on the shared `HtmlAudioElement` — only the source track's entry controls element lifecycle. `update_streaming` must skip entries that are forks (a `is_fork: bool` flag on `WebTrack`). This ensures distance-based lazy streaming decisions are made only by the source track owner, avoiding conflicting pause/play from divergent distance states.
 
 ### Pipe registry (vvw-game)
 
