@@ -17,6 +17,7 @@ pub fn assemble(
     albums: &[String],
     output: &Path,
     audio_base_url: Option<&str>,
+    site_url: Option<&str>,
 ) -> Result<()> {
     let dist = trunk_build::dist_dir(workspace_root);
     anyhow::ensure!(
@@ -73,7 +74,14 @@ pub fn assemble(
             .with_context(|| format!("Failed to copy project.ron for '{album}'"))?;
 
         // Inject OG meta tags into index.html from album metadata
-        let album_html = inject_og_tags(&template_html, &src, album, audio_base_url)?;
+        let album_html = match inject_og_tags(&template_html, &src, album, audio_base_url, site_url)
+        {
+            Ok(html) => html,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&album_out);
+                return Err(e);
+            }
+        };
         std::fs::write(album_out.join("index.html"), album_html)
             .with_context(|| format!("Failed to write index.html for '{album}'"))?;
 
@@ -127,6 +135,7 @@ fn inject_og_tags(
     project_dir: &Path,
     album: &str,
     audio_base_url: Option<&str>,
+    site_url: Option<&str>,
 ) -> Result<String> {
     let ron_text = std::fs::read_to_string(project_dir.join("project.ron"))
         .with_context(|| format!("Failed to read project.ron for '{album}'"))?;
@@ -144,51 +153,72 @@ fn inject_og_tags(
     let escaped_desc = html_escape(&meta.description);
 
     let mut tags = String::new();
-    let _ = writeln!(
+    writeln!(
         tags,
         "    <meta property=\"og:title\" content=\"{escaped_title}\">"
-    );
+    )
+    .unwrap();
     if !meta.description.is_empty() {
-        let _ = writeln!(
+        writeln!(
             tags,
             "    <meta property=\"og:description\" content=\"{escaped_desc}\">"
-        );
+        )
+        .unwrap();
     }
-    let _ = writeln!(tags, "    <meta property=\"og:type\" content=\"website\">");
+    writeln!(tags, "    <meta property=\"og:type\" content=\"website\">").unwrap();
+
+    if let Some(base) = site_url {
+        let base = base.trim_end_matches('/');
+        let escaped_url = html_escape(&format!("{base}/{album}/"));
+        writeln!(
+            tags,
+            "    <meta property=\"og:url\" content=\"{escaped_url}\">"
+        )
+        .unwrap();
+    }
 
     // Resolve cover art URL: relative paths get prefixed with audio_base_url
     if let Some(ref cover) = meta.cover_art_url {
         let resolved = html_escape(&resolve_url(cover, audio_base_url));
-        let _ = writeln!(
+        writeln!(
             tags,
             "    <meta property=\"og:image\" content=\"{resolved}\">"
-        );
-        let _ = writeln!(
+        )
+        .unwrap();
+        writeln!(
             tags,
             "    <meta name=\"twitter:card\" content=\"summary_large_image\">"
-        );
+        )
+        .unwrap();
     } else {
-        let _ = writeln!(tags, "    <meta name=\"twitter:card\" content=\"summary\">");
+        writeln!(tags, "    <meta name=\"twitter:card\" content=\"summary\">").unwrap();
     }
 
     // Duplicate title/description for Twitter
-    let _ = writeln!(
+    writeln!(
         tags,
         "    <meta name=\"twitter:title\" content=\"{escaped_title}\">"
-    );
+    )
+    .unwrap();
     if !meta.description.is_empty() {
-        let _ = writeln!(
+        writeln!(
             tags,
             "    <meta name=\"twitter:description\" content=\"{escaped_desc}\">"
-        );
+        )
+        .unwrap();
     }
 
     // Insert tags before </head> and replace <title>
-    let mut html = template.replace("</head>", &format!("{tags}</head>"));
-    html = html.replace(
-        "<title>VVW Player</title>",
-        &format!("<title>{}</title>", html_escape(&title_text)),
+    let mut html = template.replacen("</head>", &format!("{tags}</head>"), 1);
+
+    let new_title = format!("<title>{}</title>", html_escape(&title_text));
+    let replaced = html.replacen("<title>VVW Player</title>", &new_title, 1);
+    anyhow::ensure!(
+        replaced != html,
+        "Could not find <title>VVW Player</title> in template for album '{album}'. \
+         Has the Trunk template title changed?"
     );
+    html = replaced;
 
     Ok(html)
 }
@@ -198,7 +228,8 @@ fn resolve_url(url: &str, audio_base_url: Option<&str>) -> String {
     if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else if let Some(base) = audio_base_url {
-        format!("{base}{url}")
+        let base = base.trim_end_matches('/');
+        format!("{base}/{url}")
     } else {
         format!("audio/{url}")
     }

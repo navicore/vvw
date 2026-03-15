@@ -127,6 +127,9 @@ test-wasm:
 # R2 public URL for audio streaming
 R2_URL := "https://pub-5345c95a0bcc43f1a8702037c4d051d6.r2.dev"
 
+# Site base URL for og:url meta tags
+SITE_URL := "https://vvw-2c3.pages.dev"
+
 # List saved projects
 list-projects:
     cargo run -p vvw-deploy --release -- list
@@ -139,12 +142,12 @@ assemble-local ALBUM OUTPUT="deploy":
 # Assemble web player + specific album for Cloudflare (audio served from R2)
 assemble ALBUM OUTPUT="deploy":
     just build-web
-    cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}} --audio-base-url {{R2_URL}}
+    cargo run -p vvw-deploy --release -- assemble {{ALBUM}} --output {{OUTPUT}} --audio-base-url {{R2_URL}} --site-url {{SITE_URL}}
 
 # Assemble web player + ALL saved albums for Cloudflare
 assemble-all OUTPUT="deploy":
     just build-web
-    cargo run -p vvw-deploy --release -- assemble --all --output {{OUTPUT}} --audio-base-url {{R2_URL}}
+    cargo run -p vvw-deploy --release -- assemble --all --output {{OUTPUT}} --audio-base-url {{R2_URL}} --site-url {{SITE_URL}}
 
 # Upload audio files to R2
 upload-audio ALBUM:
