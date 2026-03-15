@@ -53,7 +53,7 @@ Each audible track source emits up to 3 concentric arc bands that radiate outwar
 - Custom triangle-strip mesh: inner/outer radius vertices along an arc, 12 segments per arc
 - `Mesh2d` + `ColorMaterial` entities spawned as children of each `TrackIcon` entity
 - All 3 arcs pre-spawned at maze init; visibility toggled per frame (no spawn/despawn churn)
-- Z-layer between track icons (z=1) and lightmap (z=90) — z=5
+- Z-layer between track icons (z=1) and player (z=2): local z=0.5 on parent at z=1 gives world z=1.5
 - A system running `.after(SpatialAudioSet)` reads `TrackAudioState` and updates arc visibility, opacity, scale, rotation, and position each frame
 - When `sound_visuals` is `false`, the `run_if` guard prevents systems from running and no meshes are spawned — zero cost
 
