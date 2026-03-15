@@ -7,7 +7,7 @@ use std::fmt::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use vvw_core::project::ProjectManifest;
+use vvw_core::project::{AlbumMetadata, ProjectManifest};
 
 use crate::{project_dir, safe_album_path, trunk_build};
 
@@ -59,29 +59,35 @@ pub fn assemble(
     // Copy each album's project.ron (no audio — that goes to R2)
     for album in albums {
         let src = project_dir(album);
+        let ron_path = src.join("project.ron");
         anyhow::ensure!(
-            src.join("project.ron").exists(),
+            ron_path.exists(),
             "Project '{}' not found at {}",
             album,
             src.display()
         );
 
+        // Parse manifest once — used for both the copy and OG tag injection
+        let ron_text = std::fs::read_to_string(&ron_path)
+            .with_context(|| format!("Failed to read project.ron for '{album}'"))?;
+        let manifest: ProjectManifest = ron::from_str(&ron_text)
+            .with_context(|| format!("Failed to parse project.ron for '{album}'"))?;
+
         let album_out = safe_album_path(output, album)?;
         std::fs::create_dir_all(&album_out)?;
 
         // Copy project.ron
-        std::fs::copy(src.join("project.ron"), album_out.join("project.ron"))
+        std::fs::copy(&ron_path, album_out.join("project.ron"))
             .with_context(|| format!("Failed to copy project.ron for '{album}'"))?;
 
         // Inject OG meta tags into index.html from album metadata
-        let album_html = match inject_og_tags(&template_html, &src, album, audio_base_url, site_url)
-        {
-            Ok(html) => html,
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&album_out);
-                return Err(e);
-            }
-        };
+        let album_html = inject_og_tags(
+            &template_html,
+            &manifest.album,
+            album,
+            audio_base_url,
+            site_url,
+        )?;
         std::fs::write(album_out.join("index.html"), album_html)
             .with_context(|| format!("Failed to write index.html for '{album}'"))?;
 
@@ -129,20 +135,14 @@ pub fn assemble(
     Ok(())
 }
 
-/// Read album metadata from `project.ron` and inject OG meta tags into `index.html`.
+/// Inject OG meta tags into `index.html` from album metadata.
 fn inject_og_tags(
     template: &str,
-    project_dir: &Path,
+    meta: &AlbumMetadata,
     album: &str,
     audio_base_url: Option<&str>,
     site_url: Option<&str>,
 ) -> Result<String> {
-    let ron_text = std::fs::read_to_string(project_dir.join("project.ron"))
-        .with_context(|| format!("Failed to read project.ron for '{album}'"))?;
-    let manifest: ProjectManifest = ron::from_str(&ron_text)
-        .with_context(|| format!("Failed to parse project.ron for '{album}'"))?;
-
-    let meta = &manifest.album;
     let title_text = if meta.artist.is_empty() {
         meta.title.clone()
     } else {
@@ -151,6 +151,7 @@ fn inject_og_tags(
 
     let escaped_title = html_escape(&title_text);
     let escaped_desc = html_escape(&meta.description);
+    let encoded_album = percent_encode(album);
 
     let mut tags = String::new();
     writeln!(
@@ -169,7 +170,7 @@ fn inject_og_tags(
 
     if let Some(base) = site_url {
         let base = base.trim_end_matches('/');
-        let escaped_url = html_escape(&format!("{base}/{album}/"));
+        let escaped_url = html_escape(&format!("{base}/{encoded_album}/"));
         writeln!(
             tags,
             "    <meta property=\"og:url\" content=\"{escaped_url}\">"
@@ -177,9 +178,19 @@ fn inject_og_tags(
         .unwrap();
     }
 
-    // Resolve cover art URL: relative paths get prefixed with audio_base_url
-    if let Some(ref cover) = meta.cover_art_url {
-        let resolved = html_escape(&resolve_url(cover, album, audio_base_url));
+    // Resolve cover art URL: only emit og:image when the result is absolute
+    // (OG crawlers ignore relative URLs). In local-preview mode (no audio_base_url),
+    // we skip the image tag entirely.
+    let resolved_cover = meta
+        .cover_art_url
+        .as_deref()
+        .map(|cover| resolve_url(cover, &encoded_album, audio_base_url));
+    let has_absolute_cover = resolved_cover
+        .as_ref()
+        .is_some_and(|u| u.starts_with("http://") || u.starts_with("https://"));
+
+    if has_absolute_cover {
+        let resolved = html_escape(resolved_cover.as_ref().unwrap());
         writeln!(
             tags,
             "    <meta property=\"og:image\" content=\"{resolved}\">"
@@ -208,9 +219,15 @@ fn inject_og_tags(
         .unwrap();
     }
 
-    // Insert tags before </head> and replace <title>
+    // Insert tags before </head>
+    anyhow::ensure!(
+        template.contains("</head>"),
+        "Could not find </head> in template for album '{album}'. \
+         Has the Trunk template changed?"
+    );
     let mut html = template.replacen("</head>", &format!("{tags}</head>"), 1);
 
+    // Replace <title>
     let new_title = format!("<title>{}</title>", html_escape(&title_text));
     let replaced = html.replacen("<title>VVW Player</title>", &new_title, 1);
     anyhow::ensure!(
@@ -236,6 +253,19 @@ fn resolve_url(url: &str, album: &str, audio_base_url: Option<&str>) -> String {
     } else {
         format!("audio/{url}")
     }
+}
+
+/// Percent-encode a URL path segment (RFC 3986 unreserved characters pass through).
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+            out.push(b as char);
+        } else {
+            write!(out, "%{b:02X}").unwrap();
+        }
+    }
+    out
 }
 
 /// Escape HTML attribute values.
