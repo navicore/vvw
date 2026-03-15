@@ -27,12 +27,12 @@ impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
             player_speed: 600.0,
-            player_friction: 0.5,
-            player_restitution: 0.5,
-            player_linear_damping: 3.0,
+            player_friction: 0.3,
+            player_restitution: 0.7,
+            player_linear_damping: 2.5,
             player_angular_damping: 5.0,
-            wall_friction: 0.5,
-            wall_restitution: 0.4,
+            wall_friction: 0.3,
+            wall_restitution: 0.6,
         }
     }
 }
