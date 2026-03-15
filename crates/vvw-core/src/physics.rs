@@ -23,6 +23,15 @@ pub struct PhysicsConfig {
     pub wall_friction: f32,
     /// Wall collider bounciness
     pub wall_restitution: f32,
+    /// Track icon collider bounciness — lower than walls so icons feel like
+    /// bumping into furniture rather than ricocheting. Effective restitution
+    /// is `max(player_restitution, track_restitution)` (avian2d default).
+    #[serde(default = "default_track_restitution")]
+    pub track_restitution: f32,
+}
+
+fn default_track_restitution() -> f32 {
+    0.2
 }
 
 impl Default for PhysicsConfig {
@@ -35,6 +44,7 @@ impl Default for PhysicsConfig {
             player_angular_damping: 5.0,
             wall_friction: 0.3,
             wall_restitution: 0.6,
+            track_restitution: default_track_restitution(),
         }
     }
 }

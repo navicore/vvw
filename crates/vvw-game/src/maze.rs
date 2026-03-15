@@ -117,7 +117,7 @@ pub fn spawn_maze_tiles(
                     RigidBody::Static,
                     Collider::rectangle(icon_size, icon_size),
                     Friction::new(physics.wall_friction),
-                    Restitution::new(physics.wall_restitution),
+                    Restitution::new(physics.track_restitution),
                 ));
                 if lighting.track_lights_enabled {
                     icon.with_child((
