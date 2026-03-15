@@ -143,10 +143,11 @@ fn inject_og_tags(
     audio_base_url: Option<&str>,
     site_url: Option<&str>,
 ) -> Result<String> {
-    let title_text = if meta.artist.is_empty() {
-        meta.title.clone()
-    } else {
-        format!("{} — {}", meta.title, meta.artist)
+    let title_text = match (meta.title.is_empty(), meta.artist.is_empty()) {
+        (false, false) => format!("{} — {}", meta.title, meta.artist),
+        (false, true) => meta.title.clone(),
+        (true, false) => meta.artist.clone(),
+        (true, true) => String::new(),
     };
 
     let escaped_title = html_escape(&title_text);
@@ -185,10 +186,22 @@ fn inject_og_tags(
     // Resolve cover art URL: only emit og:image when the result is absolute
     // (OG crawlers ignore relative URLs). In local-preview mode (no audio_base_url),
     // we skip the image tag entirely.
-    let resolved_cover = meta
-        .cover_art_url
-        .as_deref()
-        .map(|cover| resolve_url(cover, album, audio_base_url));
+    // Relative cover URLs with path separators are skipped — upload-audio uses a
+    // flat audio/ directory, so sub-paths would produce broken R2 URLs.
+    let resolved_cover = meta.cover_art_url.as_deref().and_then(|cover| {
+        if !cover.starts_with("http://")
+            && !cover.starts_with("https://")
+            && (cover.contains('/') || cover.contains(".."))
+        {
+            eprintln!(
+                "  Warning: cover_art_url '{cover}' for '{album}' contains path separators; \
+                 skipping og:image (use a flat filename or absolute URL)"
+            );
+            None
+        } else {
+            Some(resolve_url(cover, album, audio_base_url))
+        }
+    });
     let has_absolute_cover = resolved_cover
         .as_ref()
         .is_some_and(|u| u.starts_with("http://") || u.starts_with("https://"));
