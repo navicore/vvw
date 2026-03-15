@@ -50,6 +50,9 @@ const VIBRATE_AMPLITUDE: f32 = 0.08;
 /// Alpha change threshold — skip material mutation when delta is below this.
 const ALPHA_EPSILON: f32 = 0.005;
 
+/// Sentinel value for `last_alpha` to force a material update on reactivation.
+const ALPHA_INVALIDATED: f32 = -1.0;
+
 /// Marker component for sound visual arcs.
 #[derive(Component)]
 struct SoundArc {
@@ -123,7 +126,7 @@ fn build_arc_mesh(sweep: f32, radius: f32) -> Mesh {
     let vertex_count = positions.len();
     Mesh::new(
         PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     )
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
@@ -144,7 +147,7 @@ fn spawn_arcs(
         return;
     }
 
-    // Lazily initialize arc meshes on first use
+    // Lazily initialize arc meshes on first use, cached in ArcMeshes resource
     let arc_mesh_handles = arc_meshes.as_ref().map_or_else(
         || {
             let handles: Vec<Handle<Mesh>> = (0..MAX_ARCS)
@@ -174,7 +177,7 @@ fn spawn_arcs(
                 Visibility::Hidden,
                 SoundArc {
                     index: i,
-                    last_alpha: 0.0,
+                    last_alpha: ALPHA_INVALIDATED,
                 },
             ));
         }
@@ -198,7 +201,7 @@ fn update_arcs(
             &mut Visibility,
             &MeshMaterial2d<ColorMaterial>,
         ),
-        Without<Player>,
+        (Without<Player>, Without<TrackIcon>),
     >,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
@@ -206,7 +209,7 @@ fn update_arcs(
         return;
     };
     let player_pos = player_tf.translation.truncate();
-    // Wrap elapsed time to avoid f32 precision loss in long sessions (~4.7h+)
+    // Wrap elapsed time in f64 to avoid f32 precision loss (~105 min period)
     let t = (time.elapsed_secs_f64() % (std::f64::consts::TAU * 1000.0)) as f32;
 
     for (mut arc, child_of, mut tf, mut vis, mat_handle) in &mut arc_query {
@@ -231,6 +234,8 @@ fn update_arcs(
 
         if arc.index >= active_count {
             *vis = Visibility::Hidden;
+            // Invalidate so material is updated when arc becomes visible again
+            arc.last_alpha = ALPHA_INVALIDATED;
             continue;
         }
 
@@ -242,6 +247,7 @@ fn update_arcs(
 
         if distance < 0.01 {
             *vis = Visibility::Hidden;
+            arc.last_alpha = ALPHA_INVALIDATED;
             continue;
         }
 
@@ -258,7 +264,9 @@ fn update_arcs(
         // Fixed spacing: arc 0 at 1/3, arc 1 at 2/3, arc 2 at 3/3 of MAX_REACH
         let spacing = MAX_REACH / MAX_ARCS as f32;
         let lane_center = (arc.index as f32 + 1.0) * spacing;
-        let offset_distance = (vibrate * spacing).mul_add(VIBRATE_AMPLITUDE, lane_center);
+        let offset_distance = (vibrate * spacing)
+            .mul_add(VIBRATE_AMPLITUDE, lane_center)
+            .max(0.0);
         let clamped_offset = offset_distance.min(distance * 0.8);
 
         tf.translation.x = dir.x * clamped_offset;
