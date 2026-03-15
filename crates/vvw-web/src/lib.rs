@@ -101,10 +101,12 @@ async fn run() -> Result<(), JsValue> {
     // 5. Inject track metadata into DOM for the foldout
     ui::inject_track_metadata(&loaded.manifest.tracks, audio_base_url);
 
-    // 6. Fetch background image if configured
+    // 6. Fetch background image if configured (with timeout so a failed load
+    //    never blocks app startup)
     let background_data = if let Some(ref bg_url) = loaded.manifest.album.background_url {
         let resolved = ui::resolve_bg_url(bg_url, audio_base_url);
         web_sys::console::log_1(&format!("Loading background: {resolved}").into());
+
         match fetch_and_decode_image(&resolved).await {
             Ok(data) => {
                 web_sys::console::log_1(
@@ -392,44 +394,40 @@ fn setup_overlay_click(ctx: web_sys::AudioContext, flag: Arc<AtomicBool>) -> Res
     Ok(())
 }
 
-/// Fetch an image URL and decode it to RGBA pixels using the browser's native decoder.
+/// Fetch an image URL and decode it to RGBA pixels.
+///
+/// Uses the Fetch API + `createImageBitmap` instead of an `<img>` element.
+/// This avoids silent failures where detached `<img>` elements never fire
+/// their load/error events in some browsers.
 async fn fetch_and_decode_image(url: &str) -> Result<BackgroundImageData, JsValue> {
-    use js_sys::Promise;
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
 
-    // Create an <img> element and load the URL
-    let img = web_sys::HtmlImageElement::new()?;
-    img.set_cross_origin(Some("anonymous"));
+    let window = web_sys::window().ok_or("no window")?;
 
-    // Wait for load via a promise
-    let load_promise = Promise::new(&mut |resolve, reject| {
-        let on_load = Closure::once(move || {
-            let _ = resolve.call0(&JsValue::NULL);
-        });
-        let on_error = Closure::once(move || {
-            let _ = reject.call1(&JsValue::NULL, &"image load failed".into());
-        });
-        img.set_onload(Some(on_load.as_ref().unchecked_ref()));
-        img.set_onerror(Some(on_error.as_ref().unchecked_ref()));
-        on_load.forget();
-        on_error.forget();
-    });
+    // Fetch the image bytes
+    let resp_val = JsFuture::from(window.fetch_with_str(url)).await?;
+    let resp: web_sys::Response = resp_val.dyn_into()?;
+    if !resp.ok() {
+        return Err(format!("fetch failed: {} {}", resp.status(), resp.status_text()).into());
+    }
 
-    img.set_src(url);
-    JsFuture::from(load_promise).await?;
+    let blob = JsFuture::from(resp.blob()?).await?;
+    let blob: web_sys::Blob = blob.dyn_into()?;
 
-    let w = img.natural_width();
-    let h = img.natural_height();
+    // Decode via createImageBitmap (works without a DOM element)
+    let bitmap_promise = window.create_image_bitmap_with_blob(&blob)?;
+    let bitmap_val = JsFuture::from(bitmap_promise).await?;
+    let bitmap: web_sys::ImageBitmap = bitmap_val.dyn_into()?;
+
+    let w = bitmap.width();
+    let h = bitmap.height();
     if w == 0 || h == 0 {
         return Err("image has zero dimensions".into());
     }
 
     // Draw to an offscreen canvas to extract RGBA pixels
-    let document = web_sys::window()
-        .ok_or("no window")?
-        .document()
-        .ok_or("no document")?;
+    let document = window.document().ok_or("no document")?;
     let canvas: web_sys::HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
     canvas.set_width(w);
     canvas.set_height(h);
@@ -439,7 +437,7 @@ async fn fetch_and_decode_image(url: &str) -> Result<BackgroundImageData, JsValu
         .ok_or("no 2d context")?
         .dyn_into()?;
 
-    ctx.draw_image_with_html_image_element(&img, 0.0, 0.0)?;
+    ctx.draw_image_with_image_bitmap(&bitmap, 0.0, 0.0)?;
     let image_data = ctx.get_image_data(0.0, 0.0, f64::from(w), f64::from(h))?;
     let rgba = image_data.data().0;
 

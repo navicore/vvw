@@ -337,7 +337,7 @@ async fn s3_put_with_progress(
     file: &Path,
     content_type: &str,
 ) -> Result<()> {
-    const MAX_RETRIES: u32 = 3;
+    const MAX_RETRIES: u32 = 10;
 
     for attempt in 1..=MAX_RETRIES {
         let mut f = tokio::fs::File::open(file).await?;
@@ -365,7 +365,7 @@ async fn s3_put_with_progress(
 /// Upload a single file to R2 via wrangler, with retries for transient failures.
 /// Shows elapsed time so slow uploads are visible on constrained connections.
 fn r2_put(bucket: &str, key: &str, file: &Path, content_type: &str) -> Result<()> {
-    const MAX_RETRIES: u32 = 3;
+    const MAX_RETRIES: u32 = 10;
     for attempt in 1..=MAX_RETRIES {
         let status = std::process::Command::new("wrangler")
             .args([

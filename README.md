@@ -88,18 +88,13 @@ just export-maze my-album --output maze-mask.png --scale 8
 
 **Add a texture layer (optional):**
 
-1. Open a texture image as a new layer (File > Open As Layers). Place it **between** the artwork and the maze mask:
-   - Bottom: artwork (with bump map applied)
-   - Middle: texture
-   - Top: maze mask (will become the stencil)
-2. Select the **texture layer** in the Layers panel
-3. Add a layer mask: Layer > Mask > Add Layer Mask, choose "White (full opacity)"
-4. Select the **layer mask** (click the white thumbnail next to the texture layer)
-5. Copy the maze mask to clipboard: click the maze mask layer, Select > All, Edit > Copy
-6. Click back on the texture layer's **mask thumbnail**, then Edit > Paste, then Layer > Flatten Image (or anchor the floating selection)
-7. The texture now shows only on wall areas. Adjust the texture layer's opacity/blend mode to taste.
-8. Select > None (Ctrl+Shift+A) to clear any selection
-9. Hide or delete the maze mask layer — it's served its purpose
+1. Open a texture image as a new layer (File > Open As Layers). Scale it to match your artwork dimensions if needed.
+2. Go to the **maze mask layer**, use **Select by Color**, and click a dark (wall) pixel — this selects all walls.
+3. Click on the **texture layer** to make it active.
+4. Layer > Mask > Add Layer Mask > choose **Selection** > OK. The texture now only shows through where walls are.
+5. Select > None (Ctrl+Shift+A) to clear the selection.
+6. Adjust the texture layer's **blend mode** (try Overlay, Soft Light, or Multiply) and **opacity** until it looks right.
+7. Hide or delete the maze mask layer — it's served its purpose.
 
 **Export the result:**
 
@@ -112,11 +107,11 @@ just export-maze my-album --output maze-mask.png --scale 8
 # Put background.jpg in the album's audio directory and upload
 just upload-audio my-album
 
-# Edit project.ron and add background_url to the album section:
+# Edit project.ron and change background_url in the album section:
 $EDITOR ~/Library/Application\ Support/vvw/projects/my-album/project.ron
 ```
 
-In `project.ron`, add to the `album` block:
+In `project.ron`, change `background_url: None,` to:
 
 ```ron
 background_url: Some("background.jpg"),
