@@ -179,7 +179,7 @@ fn inject_og_tags(
 
     // Resolve cover art URL: relative paths get prefixed with audio_base_url
     if let Some(ref cover) = meta.cover_art_url {
-        let resolved = html_escape(&resolve_url(cover, audio_base_url));
+        let resolved = html_escape(&resolve_url(cover, album, audio_base_url));
         writeln!(
             tags,
             "    <meta property=\"og:image\" content=\"{resolved}\">"
@@ -224,12 +224,15 @@ fn inject_og_tags(
 }
 
 /// Resolve a potentially relative URL against the audio base URL.
-fn resolve_url(url: &str, audio_base_url: Option<&str>) -> String {
+///
+/// Relative cover art lives on R2 at `{base}/{album}/audio/{filename}`,
+/// matching the key structure used by `upload-audio`.
+fn resolve_url(url: &str, album: &str, audio_base_url: Option<&str>) -> String {
     if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else if let Some(base) = audio_base_url {
         let base = base.trim_end_matches('/');
-        format!("{base}/{url}")
+        format!("{base}/{album}/audio/{url}")
     } else {
         format!("audio/{url}")
     }
