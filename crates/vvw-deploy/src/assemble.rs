@@ -169,6 +169,10 @@ fn inject_og_tags(
     writeln!(tags, "    <meta property=\"og:type\" content=\"website\">").unwrap();
 
     if let Some(base) = site_url {
+        anyhow::ensure!(
+            base.starts_with("https://") || base.starts_with("http://"),
+            "site_url must use http:// or https:// scheme, got: {base}"
+        );
         let base = base.trim_end_matches('/');
         let escaped_url = html_escape(&format!("{base}/{encoded_album}/"));
         writeln!(
@@ -184,7 +188,7 @@ fn inject_og_tags(
     let resolved_cover = meta
         .cover_art_url
         .as_deref()
-        .map(|cover| resolve_url(cover, &encoded_album, audio_base_url));
+        .map(|cover| resolve_url(cover, album, audio_base_url));
     let has_absolute_cover = resolved_cover
         .as_ref()
         .is_some_and(|u| u.starts_with("http://") || u.starts_with("https://"));
@@ -228,14 +232,13 @@ fn inject_og_tags(
     let mut html = template.replacen("</head>", &format!("{tags}</head>"), 1);
 
     // Replace <title>
-    let new_title = format!("<title>{}</title>", html_escape(&title_text));
-    let replaced = html.replacen("<title>VVW Player</title>", &new_title, 1);
     anyhow::ensure!(
-        replaced != html,
+        html.contains("<title>VVW Player</title>"),
         "Could not find <title>VVW Player</title> in template for album '{album}'. \
          Has the Trunk template title changed?"
     );
-    html = replaced;
+    let new_title = format!("<title>{}</title>", html_escape(&title_text));
+    html = html.replacen("<title>VVW Player</title>", &new_title, 1);
 
     Ok(html)
 }
