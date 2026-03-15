@@ -29,6 +29,9 @@ pub struct AlbumMetadata {
     pub background_url: Option<String>,
     /// External links: (label, url) pairs
     pub links: Vec<(String, String)>,
+    /// Enable sound wave visuals (pulsing ellipses radiating from track sources)
+    #[serde(default)]
+    pub sound_visuals: bool,
 }
 
 /// Per-track metadata for web publishing
@@ -149,6 +152,7 @@ mod tests {
                 release_date: Some("2025-01-01".to_string()),
                 background_url: None,
                 links: vec![("bandcamp".to_string(), "https://bc.example.com".to_string())],
+                sound_visuals: false,
             },
         };
 

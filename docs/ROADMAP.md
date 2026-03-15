@@ -16,6 +16,7 @@ Recent additions:
 - **Directional flashlight** — Per-album configurable cone light mode (`player_light_mode: Flashlight` in `project.ron`). Left/Right rotate heading, Up/Down move along heading. Soft-edge falloff on cone boundary.
 - **Album & track info panels** — Clickable album title drops down cover art and description over the canvas. Track info bar shows per-track artwork on click. Chevron indicators signal interactivity. Image deployment workflow scans for cover art and track artwork during album creation.
 - **Canvas focus indicator** — CSS-only dim overlay with arrow key hint when canvas loses focus. Clears on click/tap.
+- **Sound wave visuals** — Per-album `)))` arc animations radiating from audible track sources toward the player. Count scales with gain (1–3 arcs), arcs vibrate in place, outer arcs are longer/flatter than inner. Enabled via `sound_visuals: true` in album metadata.
 
 ## Next Up
 
