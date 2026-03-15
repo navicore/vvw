@@ -133,8 +133,6 @@ fn spawn_arcs(
 
     // Each arc gets a progressively longer sweep and larger radius
     // so curvature flattens naturally as waves radiate outward
-    // Each arc gets a progressively longer sweep and larger radius
-    // so curvature flattens naturally as waves radiate outward
     let arc_meshes: Vec<Handle<Mesh>> = (0..MAX_ARCS)
         .map(|i| {
             let scale = i as f32 + 1.0; // 1, 2, 3
@@ -142,15 +140,16 @@ fn spawn_arcs(
             meshes.add(build_arc_mesh(ARC_SWEEP * scale, radius))
         })
         .collect();
-    let material_handle = materials.add(ColorMaterial::from(Color::srgba(0.0, 0.0, 0.0, 0.0)));
 
     for entity in &query {
         commands.entity(entity).insert(SoundVisualsSpawned);
 
         for (i, arc_mesh) in arc_meshes.iter().enumerate() {
+            // Each arc gets its own material so alpha can be independently modulated
+            let mat = materials.add(ColorMaterial::from(Color::srgba(0.0, 0.0, 0.0, 0.0)));
             commands.entity(entity).with_child((
                 Mesh2d(arc_mesh.clone()),
-                MeshMaterial2d(material_handle.clone()),
+                MeshMaterial2d(mat),
                 Transform::from_xyz(0.0, 0.0, 5.0),
                 Visibility::Hidden,
                 SoundArc { index: i },
@@ -184,7 +183,8 @@ fn update_arcs(
         return;
     };
     let player_pos = player_tf.translation.truncate();
-    let t = time.elapsed_secs();
+    // Wrap elapsed time to avoid f32 precision loss in long sessions (~4.7h+)
+    let t = (time.elapsed_secs_f64() % (std::f64::consts::TAU * 1000.0)) as f32;
 
     for (arc, child_of, mut tf, mut vis, mat_handle) in &mut arc_query {
         let parent = child_of.parent();
