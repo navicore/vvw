@@ -11,7 +11,9 @@ pub struct PhysicsConfig {
     pub player_speed: f32,
     /// Player body friction
     pub player_friction: f32,
-    /// Player body bounciness (0 = no bounce, 1 = full bounce)
+    /// Player body bounciness (0 = no bounce, 1 = full bounce).
+    /// Note: values above ~0.8 combined with damping below ~2.0 can cause
+    /// sustained bounce cycles in corridors narrower than 2 tiles.
     pub player_restitution: f32,
     /// Linear velocity damping — higher values stop the player faster
     pub player_linear_damping: f32,
@@ -21,18 +23,28 @@ pub struct PhysicsConfig {
     pub wall_friction: f32,
     /// Wall collider bounciness
     pub wall_restitution: f32,
+    /// Track icon collider bounciness — lower than walls so icons feel like
+    /// bumping into furniture rather than ricocheting. Effective restitution
+    /// is `max(player_restitution, track_restitution)` (avian2d default).
+    #[serde(default = "default_track_restitution")]
+    pub track_restitution: f32,
+}
+
+fn default_track_restitution() -> f32 {
+    0.2
 }
 
 impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
             player_speed: 600.0,
-            player_friction: 0.5,
-            player_restitution: 0.5,
-            player_linear_damping: 3.0,
+            player_friction: 0.3,
+            player_restitution: 0.7,
+            player_linear_damping: 2.5,
             player_angular_damping: 5.0,
-            wall_friction: 0.5,
-            wall_restitution: 0.4,
+            wall_friction: 0.3,
+            wall_restitution: 0.6,
+            track_restitution: default_track_restitution(),
         }
     }
 }
