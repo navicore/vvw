@@ -242,6 +242,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             release_date: metadata.album.release_date,
             background_url: None,
             links: metadata.album.links,
+            sound_visuals: false,
         },
     };
 

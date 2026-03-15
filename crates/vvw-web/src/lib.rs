@@ -18,8 +18,8 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    Maze, MazeTile, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter,
-    VvwGamePlugin, spawn_maze_tiles,
+    Maze, MazeTile, SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon,
+    TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -49,6 +49,7 @@ pub fn main() {
     });
 }
 
+#[allow(clippy::too_many_lines)]
 async fn run() -> Result<(), JsValue> {
     // 1. Fetch project manifest and audio base URL
     let loaded = project::load_project().await?;
@@ -127,11 +128,13 @@ async fn run() -> Result<(), JsValue> {
     let maze = loaded.manifest.maze;
     let lighting = loaded.manifest.lighting;
     let physics = loaded.manifest.physics;
+    let sound_visuals = SoundVisualsEnabled(loaded.manifest.album.sound_visuals);
 
     let mut app = App::new();
     app.insert_resource(maze)
         .insert_resource(lighting)
         .insert_resource(physics)
+        .insert_resource(sound_visuals)
         .insert_resource(TrackIdCounter(next_id))
         .insert_resource(AudioActivationFlag(activation_flag))
         .init_resource::<CurrentTrackInfo>()

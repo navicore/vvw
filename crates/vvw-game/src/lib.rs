@@ -14,6 +14,7 @@ mod camera;
 mod maze;
 pub mod mazegen;
 mod player;
+mod sound_visuals;
 mod spatial;
 mod tiles;
 mod touch;
@@ -24,6 +25,7 @@ pub use maze::{
     Maze, MazeChanged, MazePlugin, MazeTile, TrackIcon, TrackLight, colors, spawn_maze_tiles,
 };
 pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};
+pub use sound_visuals::SoundVisualsEnabled;
 pub use tiles::{TILE_SIZE, TileKind, TilePos};
 
 use avian2d::PhysicsPlugins;
@@ -47,6 +49,7 @@ impl Plugin for VvwGamePlugin {
             SpatialAudioPlugin,
             CameraPlugin,
             touch::TouchControlsPlugin,
+            sound_visuals::SoundVisualsPlugin,
         ));
     }
 }
