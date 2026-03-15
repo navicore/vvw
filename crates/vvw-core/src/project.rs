@@ -29,7 +29,7 @@ pub struct AlbumMetadata {
     pub background_url: Option<String>,
     /// External links: (label, url) pairs
     pub links: Vec<(String, String)>,
-    /// Enable sound wave visuals (pulsing ellipses radiating from track sources)
+    /// Enable sound wave visuals (pulsing arcs radiating from track sources)
     #[serde(default)]
     pub sound_visuals: bool,
 }
