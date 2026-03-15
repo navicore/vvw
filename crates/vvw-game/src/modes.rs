@@ -59,7 +59,13 @@ struct SelectedModeIndex(usize);
 struct TwoFingerTapState {
     /// Set when we first see exactly 2 fingers pressed
     tracking: bool,
+    /// Set when gesture is rejected (e.g. 3+ fingers); prevents re-arming
+    /// until all fingers lift.
+    cancelled: bool,
     positions: [(u64, Vec2); 2],
+    /// Last known position for each finger, updated when fingers lift across
+    /// frames so movement checks work even after `get_pressed` returns None.
+    last_positions: [Vec2; 2],
     start_time: f64,
     /// Cooldown after a successful tap to prevent re-triggering
     cooldown_until: f64,
@@ -236,6 +242,14 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
     // Count currently pressed touches without allocating
     let count = touches.iter().count();
 
+    // Clear cancelled state once all fingers lift
+    if state.cancelled {
+        if count == 0 {
+            state.cancelled = false;
+        }
+        return false;
+    }
+
     if count >= 2 && !state.tracking {
         // Two or more fingers just appeared — start tracking
         let mut iter = touches.iter();
@@ -246,24 +260,27 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
             (first.id(), first.position()),
             (second.id(), second.position()),
         ];
+        state.last_positions = [first.position(), second.position()];
         state.start_time = now;
         return false;
     }
 
     if state.tracking && count > 2 {
-        // More fingers arrived — not a two-finger tap
+        // More fingers arrived — cancel and don't re-arm until all lift
         state.tracking = false;
+        state.cancelled = true;
         return false;
     }
 
     if state.tracking && count == 2 {
-        // Still holding — check for excessive movement (pinch/drag)
-        for (id, start_pos) in &state.positions {
-            if let Some(touch) = touches.get_pressed(*id)
-                && touch.position().distance(*start_pos) > TAP_MOVE_THRESHOLD
-            {
-                state.tracking = false;
-                return false;
+        // Still holding — update last-known positions and check movement
+        for (i, (id, start_pos)) in state.positions.iter().enumerate() {
+            if let Some(touch) = touches.get_pressed(*id) {
+                state.last_positions[i] = touch.position();
+                if touch.position().distance(*start_pos) > TAP_MOVE_THRESHOLD {
+                    state.tracking = false;
+                    return false;
+                }
             }
         }
         // Check timeout while fingers are still down
@@ -275,8 +292,16 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
     }
 
     if state.tracking && count <= 1 {
-        // Fingers lifting — check that released fingers didn't move too far
-        // (catches fast swipes that lift within a single frame)
+        // Fingers lifting — check last-known positions for both fingers
+        // (covers the case where the first finger lifted on a prior frame)
+        for (i, (_, start_pos)) in state.positions.iter().enumerate() {
+            if state.last_positions[i].distance(*start_pos) > TAP_MOVE_THRESHOLD {
+                state.tracking = false;
+                return false;
+            }
+        }
+
+        // Also check just-released positions (catches fast same-frame swipes)
         for (id, start_pos) in &state.positions {
             for released in touches.iter_just_released() {
                 if released.id() == *id
@@ -288,8 +313,7 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
             }
         }
 
-        // Accept if duration was short — fingers rarely lift at exactly
-        // the same time.
+        // Accept if duration was short
         state.tracking = false;
         let duration = now - state.start_time;
         if duration <= TAP_MAX_DURATION {
@@ -432,9 +456,11 @@ fn handle_cycle_click(
             return;
         }
         selected.0 = (selected.0 + 1) % registry.modes.len();
-        let new_label = &registry.modes[selected.0].label;
+        let Some(mode) = registry.modes.get(selected.0) else {
+            return;
+        };
         for mut text in &mut label_query {
-            (**text).clone_from(new_label);
+            (**text).clone_from(&mode.label);
         }
     }
 }
