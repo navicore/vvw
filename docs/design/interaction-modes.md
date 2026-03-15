@@ -25,7 +25,7 @@ A `ModeRegistry` resource holding a `Vec<ModeDescriptor>`:
 ```rust
 struct ModeDescriptor {
     id: ModeId,           // enum variant or string key
-    label: &'static str,  // shown on control surface
+    label: String,        // shown on control surface (runtime from project.ron)
     icon: ModeIcon,       // enum: Record, Carve, Pipe, etc.
 }
 ```
@@ -41,7 +41,7 @@ Feature plugins register their mode during app setup (e.g., `BreadcrumbPlugin` i
 - **Activation gesture:** long-press (mouse or touch) on a non-corridor area (wall tile) toggles the control surface visibility. Same gesture on both desktop and mobile.
 - **Mode cycling:** a cycle button rotates through registered modes. The current mode's icon/label is displayed.
 - **Start/stop:** a primary action button sends `ModeActivated(ModeId)` or `ModeDeactivated(ModeId)` events. Visual state (tinted, pulsing border) indicates when a mode is active.
-- **Dismissal:** long-press on wall again, or pressing Escape, hides the control surface and deactivates any active mode.
+- **Dismissal:** long-press on wall again, or pressing Escape, hides the control surface. If a mode is active, the observer chain must clear `ActiveMode` and send `ModeDeactivated` before hiding the UI — this is enforced by the `ControlSurfaceToggled(false)` handler, not left to individual mode plugins.
 - **Appearance:** semi-transparent tinted overlay buttons, visually similar to the existing D-pad but positioned separately (e.g., bottom-right). Hidden when no modes are registered.
 
 ### Mode lifecycle events (vvw-game)
@@ -50,7 +50,7 @@ Each feature plugin listens for `ModeActivated` / `ModeDeactivated` with its own
 
 ### Input suppression
 
-When a mode is active, normal movement input may be suppressed or modified depending on the mode. Each mode's plugin decides this via its own systems — the framework provides `ActiveMode` as the coordination point but does not enforce suppression.
+When a mode is active, normal movement input may be suppressed or modified depending on the mode. The player movement systems (`handle_player_input`, `handle_touch_input`) must check `ActiveMode` before consuming input — if `ActiveMode` is `Some(id)` and the active mode suppresses movement, those systems early-return. This check lives in the movement systems themselves (not in separate suppression systems) to avoid frame-ordering races.
 
 ## Domain Events
 
@@ -58,7 +58,7 @@ When a mode is active, normal movement input may be suppressed or modified depen
 |---|---|---|
 | `ModeActivated(ModeId)` | Control surface button | Feature plugin (enter mode logic) |
 | `ModeDeactivated(ModeId)` | Control surface button / Escape / mode switch | Feature plugin (exit mode logic, leave artifact) |
-| `ControlSurfaceToggled(bool)` | Long-press gesture detector | UI visibility system |
+| `ControlSurfaceToggled(bool)` | Long-press gesture detector | UI visibility system; when `false`, also clears `ActiveMode` and sends `ModeDeactivated` if a mode was active |
 
 Feature-specific events (e.g., `BreadcrumbRecordStart`, `TileChanged`) are produced by each feature plugin in response to `ModeActivated`/`ModeDeactivated` — not by the mode system itself.
 
