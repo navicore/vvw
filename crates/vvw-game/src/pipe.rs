@@ -126,7 +126,6 @@ fn watch_mode_changes(
     mut pipe_messages: MessageWriter<PipePlaced>,
     player_query: Query<&Transform, With<Player>>,
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
-    preview_query: Query<Entity, With<PipePreview>>,
     mut commands: Commands,
 ) {
     if !active.is_changed() {
@@ -167,12 +166,9 @@ fn watch_mode_changes(
         );
     } else if !pipe_mode_active && state.active {
         // Mode just deactivated — finalize or cancel
+        // Preview cleanup is handled by `update_pipe_preview` (which runs
+        // next in the chain) seeing `state.active == false`.
         state.active = false;
-
-        // Clean up preview
-        for entity in &preview_query {
-            commands.entity(entity).despawn();
-        }
 
         if registry.pipes.len() >= MAX_PIPES {
             info!("Pipe limit reached ({MAX_PIPES})");
@@ -206,6 +202,7 @@ fn watch_mode_changes(
             tile_pos,
             TrackAudioState::default(),
             Transform::from_xyz(end_pos.x, end_pos.y, 1.0),
+            GlobalTransform::default(),
             Visibility::Inherited,
         ));
 
@@ -246,13 +243,13 @@ fn update_pipe_preview(
     preview_query: Query<Entity, With<PipePreview>>,
     mut commands: Commands,
 ) {
-    if !state.active {
-        return;
-    }
-
-    // Despawn old preview
+    // Despawn old preview (also handles cleanup on deactivation)
     for entity in &preview_query {
         commands.entity(entity).despawn();
+    }
+
+    if !state.active {
+        return;
     }
 
     let Ok(player_tf) = player_query.single() else {

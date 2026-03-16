@@ -58,6 +58,12 @@ struct PendingTrack {
     audio_el: HtmlAudioElement,
 }
 
+/// A fork request buffered until the engine is activated.
+struct PendingFork {
+    source_id: usize,
+    new_id: usize,
+}
+
 /// Manages the Web Audio API context and all track playback.
 ///
 /// Stored as a Bevy `NonSend` resource — web-sys types are `!Send`.
@@ -66,6 +72,8 @@ pub struct WebAudioEngine {
     tracks: HashMap<usize, WebTrack>,
     /// Tracks waiting to be connected (before user gesture).
     pending: Vec<PendingTrack>,
+    /// Fork requests waiting for activation.
+    pending_forks: Vec<PendingFork>,
     /// Set after `activate()` — skip per-frame FFI state checks until then.
     activated: bool,
 }
@@ -78,6 +86,7 @@ impl WebAudioEngine {
             ctx,
             tracks: HashMap::new(),
             pending: Vec::new(),
+            pending_forks: Vec::new(),
             activated: false,
         })
     }
@@ -139,6 +148,13 @@ impl WebAudioEngine {
             );
         }
         self.activated = true;
+
+        // Drain any fork requests that arrived before activation
+        let forks: Vec<_> = self.pending_forks.drain(..).collect();
+        for pf in forks {
+            self.fork_track(pf.source_id, pf.new_id)?;
+        }
+
         Ok(())
     }
 
@@ -253,7 +269,8 @@ impl WebAudioEngine {
     /// does NOT own the `<audio>` element.
     pub fn fork_track(&mut self, source_id: usize, new_id: usize) -> Result<(), JsValue> {
         if !self.activated {
-            return Err("engine not activated".into());
+            self.pending_forks.push(PendingFork { source_id, new_id });
+            return Ok(());
         }
 
         let source = self
@@ -326,7 +343,7 @@ impl WebAudioEngine {
         }
         self.tracks
             .values()
-            .any(|t| t.audio_el.paused() && !t.paused_for_distance)
+            .any(|t| !t.is_fork && t.audio_el.paused() && !t.paused_for_distance)
     }
 
     /// Resume a suspended `AudioContext` and restart any paused `<audio>`
@@ -338,7 +355,7 @@ impl WebAudioEngine {
         let to_resume: Vec<(usize, HtmlAudioElement)> = self
             .tracks
             .iter()
-            .filter(|(_, t)| t.audio_el.paused() && !t.paused_for_distance)
+            .filter(|(_, t)| !t.is_fork && t.audio_el.paused() && !t.paused_for_distance)
             .map(|(&id, t)| (id, t.audio_el.clone()))
             .collect();
 
