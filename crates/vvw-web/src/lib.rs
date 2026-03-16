@@ -162,18 +162,25 @@ async fn run() -> Result<(), JsValue> {
     }
     if loaded.manifest.album.sound_piping {
         app.add_plugins(SoundPipePlugin);
+        // handle_pipe_placed reads PipePlaced messages (registered by SoundPipePlugin)
+        // and must be ordered with other NonSendMut<WebAudioEngine> systems.
+        app.add_systems(
+            Update,
+            handle_pipe_placed
+                .after(SpatialAudioSet)
+                .after(resume_suspended_audio)
+                .before(web_audio_sync),
+        );
     }
 
     app.add_systems(
         Update,
         (
             // All systems taking NonSendMut<WebAudioEngine> are fully ordered:
-            // activate → resume → handle_pipe_placed → web_audio_sync
+            // activate → resume → web_audio_sync
+            // (handle_pipe_placed slots between resume and sync when piping is enabled)
             activate_audio_on_click.before(resume_suspended_audio),
-            resume_suspended_audio.before(handle_pipe_placed),
-            handle_pipe_placed
-                .after(SpatialAudioSet)
-                .before(web_audio_sync),
+            resume_suspended_audio.before(web_audio_sync),
             web_audio_sync.after(SpatialAudioSet),
             update_nearest_track_info.after(SpatialAudioSet),
         ),
