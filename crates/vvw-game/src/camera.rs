@@ -47,7 +47,6 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera2d, GameCamera, Transform::default()));
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn update_camera(
     time: Res<Time>,
     config: Res<CameraConfig>,

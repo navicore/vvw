@@ -135,7 +135,6 @@ fn build_arc_mesh(sweep: f32, radius: f32) -> Mesh {
 }
 
 /// Spawn arc children for any `TrackIcon` that doesn't have them yet.
-#[allow(clippy::needless_pass_by_value)]
 fn spawn_arcs(
     mut commands: Commands,
     query: Query<Entity, (With<TrackIcon>, Without<SoundVisualsSpawned>)>,
@@ -185,7 +184,7 @@ fn spawn_arcs(
 }
 
 /// Update arc transforms, visibility, and alpha each frame.
-#[allow(clippy::needless_pass_by_value, clippy::type_complexity)]
+#[allow(clippy::type_complexity)]
 fn update_arcs(
     time: Res<Time>,
     player_query: Query<&Transform, (With<Player>, Without<SoundArc>)>,

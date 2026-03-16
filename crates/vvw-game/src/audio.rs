@@ -71,7 +71,6 @@ impl Plugin for SpatialAudioPlugin {
 }
 
 /// Compute spatial targets (gain, pan, visibility) from player position and maze LOS
-#[allow(clippy::needless_pass_by_value)]
 fn compute_spatial_targets(
     player_query: Query<&Transform, With<Player>>,
     mut track_query: Query<(&TrackIcon, &TilePos, &mut TrackAudioState)>,
@@ -109,7 +108,6 @@ fn compute_spatial_targets(
 
 /// Interpolate current gain/pan toward targets.
 /// Platform layers read the resulting `TrackAudioState` after `SpatialAudioSet`.
-#[allow(clippy::needless_pass_by_value)]
 fn interpolate_audio_state(time: Res<Time>, mut track_query: Query<&mut TrackAudioState>) {
     let dt = time.delta_secs();
 
@@ -125,7 +123,6 @@ fn interpolate_audio_state(time: Res<Time>, mut track_query: Query<&mut TrackAud
 }
 
 /// Push `LightingConfig` values to actual light components when config changes.
-#[allow(clippy::needless_pass_by_value)]
 fn apply_lighting_config(
     config: Res<LightingConfig>,
     mut ambient: ResMut<AmbientLight2d>,

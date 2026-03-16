@@ -151,7 +151,6 @@ fn spawn_dpad_button(commands: &mut Commands, parent: Entity, direction: Vec2, n
 }
 
 /// Show the D-pad overlay once any touch event is detected
-#[allow(clippy::needless_pass_by_value)]
 fn detect_touch_device(
     touches: Res<Touches>,
     mut state: ResMut<TouchState>,
@@ -171,7 +170,6 @@ fn detect_touch_device(
 /// Read D-pad button interactions and apply velocity to the player.
 /// Gated on `touch_detected` so mouse clicks on D-pad buttons don't
 /// double-apply velocity alongside keyboard input on desktop.
-#[allow(clippy::needless_pass_by_value)]
 fn handle_touch_input(
     time: Res<Time>,
     state: Res<TouchState>,
@@ -239,7 +237,6 @@ fn handle_touch_input(
 }
 
 /// Update button visuals based on interaction state
-#[allow(clippy::needless_pass_by_value)]
 fn update_dpad_visuals(
     mut query: Query<(&Interaction, &mut BackgroundColor, &mut BorderColor), With<DPadButton>>,
 ) {

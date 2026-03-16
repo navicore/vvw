@@ -1,3 +1,6 @@
+// Bevy systems take Res, Query, etc. by value — clippy's lint is a false positive.
+#![allow(clippy::needless_pass_by_value)]
+
 //! VVW Game Plugin — platform-independent game logic
 //!
 //! Provides the core game functionality for the Visual Virtual World:
@@ -14,6 +17,7 @@ mod camera;
 mod maze;
 pub mod mazegen;
 mod modes;
+pub mod pipe;
 mod player;
 mod sound_visuals;
 mod spatial;
@@ -29,6 +33,7 @@ pub use modes::{
     ActiveMode, InteractionModesPlugin, MockFeature1Plugin, MockFeature2Plugin, ModeId,
     ModeRegistry,
 };
+pub use pipe::{PipePlaced, PipeSpeaker, SoundPipePlugin};
 pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};
 pub use sound_visuals::SoundVisualsEnabled;
 pub use tiles::{TILE_SIZE, TileKind, TilePos};
