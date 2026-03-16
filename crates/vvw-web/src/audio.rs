@@ -152,7 +152,15 @@ impl WebAudioEngine {
         // Drain any fork requests that arrived before activation
         let forks: Vec<_> = self.pending_forks.drain(..).collect();
         for pf in forks {
-            self.fork_track(pf.source_id, pf.new_id)?;
+            if let Err(e) = self.fork_track(pf.source_id, pf.new_id) {
+                web_sys::console::error_1(
+                    &format!(
+                        "Pending fork {} → {} failed: {e:?}",
+                        pf.source_id, pf.new_id
+                    )
+                    .into(),
+                );
+            }
         }
 
         Ok(())
@@ -199,12 +207,13 @@ impl WebAudioEngine {
             return;
         }
 
-        // Check if any fork of this source is still in range — if so, don't
-        // pause the source even if the player is far from it.
+        // Check if any fork of this source is still audible — if so, don't
+        // pause the source even if the player is far from it. Forks never
+        // update `paused_for_distance`, so check their gain node value instead.
         let has_active_fork = self
             .tracks
             .values()
-            .any(|t| t.source_id == Some(id) && !t.paused_for_distance);
+            .any(|t| t.source_id == Some(id) && t.gain_node.gain().value() > 0.001);
 
         let Some(track) = self.tracks.get_mut(&id) else {
             return;

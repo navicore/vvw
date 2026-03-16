@@ -170,7 +170,9 @@ async fn run() -> Result<(), JsValue> {
                 .after(activate_audio_on_click)
                 .before(web_audio_sync),
             web_audio_sync.after(SpatialAudioSet),
-            handle_pipe_placed.after(SpatialAudioSet),
+            handle_pipe_placed
+                .after(SpatialAudioSet)
+                .before(web_audio_sync),
             update_nearest_track_info.after(SpatialAudioSet),
         ),
     );
