@@ -1,3 +1,6 @@
+// Bevy systems take Res, Query, etc. by value — clippy's lint is a false positive.
+#![allow(clippy::needless_pass_by_value)]
+
 //! VVW Game Plugin — platform-independent game logic
 //!
 //! Provides the core game functionality for the Visual Virtual World:

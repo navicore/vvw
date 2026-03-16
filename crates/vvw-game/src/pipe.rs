@@ -104,7 +104,6 @@ impl Plugin for SoundPipePlugin {
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn pipe_placement_active(state: Res<PipePlacementState>) -> bool {
     state.active
 }
@@ -120,7 +119,7 @@ fn register_pipe_mode(mut registry: ResMut<ModeRegistry>) {
 // ── Mode lifecycle ──────────────────────────────────────────────────────────
 
 /// React to `ActiveMode` changes: start or stop pipe placement.
-#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn watch_mode_changes(
     active: Res<ActiveMode>,
     mut state: ResMut<PipePlacementState>,
@@ -239,7 +238,6 @@ fn watch_mode_changes(
 // ── Preview ─────────────────────────────────────────────────────────────────
 
 /// Update the preview dashes each frame while placing a pipe.
-#[allow(clippy::needless_pass_by_value)]
 fn update_pipe_preview(
     state: Res<PipePlacementState>,
     player_query: Query<&Transform, With<Player>>,

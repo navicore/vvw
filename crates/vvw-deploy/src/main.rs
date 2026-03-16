@@ -674,6 +674,8 @@ fn main() -> Result<()> {
                     "--branch",
                     "main",
                     "--commit-dirty=true",
+                    "--commit-message",
+                    "deploy",
                 ],
                 "deploy",
             )?;

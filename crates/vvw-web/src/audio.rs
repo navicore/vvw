@@ -279,6 +279,17 @@ impl WebAudioEngine {
             return Ok(());
         }
 
+        // If the source is distance-paused, resume it — the fork needs signal.
+        if let Some(source) = self.tracks.get_mut(&source_id)
+            && source.paused_for_distance
+        {
+            source.paused_for_distance = false;
+            source.silent_secs = 0.0;
+            source.audio_el.set_src(&source.url);
+            source.audio_el.set_preload("auto");
+            Self::play_with_rejection_handler(&source.audio_el, source_id);
+        }
+
         let source = self
             .tracks
             .get(&source_id)

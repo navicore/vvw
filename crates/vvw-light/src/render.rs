@@ -82,7 +82,6 @@ fn setup_lightmap(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 
 /// When the occluder grid dimensions change, recreate the image at the new resolution
 /// and reposition the overlay sprite to cover the maze.
-#[allow(clippy::needless_pass_by_value)]
 fn check_grid_resize(
     grid: Res<LightOccluderGrid>,
     mut dims: ResMut<LightMapDimensions>,
@@ -130,7 +129,6 @@ fn check_grid_resize(
 /// filtering) are computed and written. Tiles outside the viewport are filled
 /// with the ambient darkness value.
 #[allow(
-    clippy::needless_pass_by_value,
     clippy::similar_names,
     clippy::too_many_arguments,
     clippy::too_many_lines

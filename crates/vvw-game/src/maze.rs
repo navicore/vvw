@@ -138,7 +138,6 @@ pub fn spawn_maze_tiles(
 
 /// Populate the light occluder grid from maze wall data.
 /// Only runs when the `Maze` resource has changed, avoiding O(W*H) per frame.
-#[allow(clippy::needless_pass_by_value)]
 fn sync_occluder_grid(maze: Res<Maze>, mut grid: ResMut<LightOccluderGrid>) {
     if !maze.is_changed() {
         return;
@@ -157,7 +156,6 @@ fn sync_occluder_grid(maze: Res<Maze>, mut grid: ResMut<LightOccluderGrid>) {
 type MazeEntityFilter = Or<(With<MazeTile>, With<TrackIcon>)>;
 
 /// On `MazeChanged`, despawn all maze tiles and track icons, then re-render
-#[allow(clippy::needless_pass_by_value)]
 fn respawn_maze_tiles(
     mut commands: Commands,
     mut events: MessageReader<MazeChanged>,

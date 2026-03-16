@@ -1,3 +1,6 @@
+// Bevy systems take Res, Query, etc. by value — clippy's lint is a false positive.
+#![allow(clippy::needless_pass_by_value)]
+
 //! VVW 2D Lighting
 //!
 //! Provides simple 2D point lighting with ambient darkness.

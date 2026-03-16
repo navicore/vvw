@@ -5,6 +5,8 @@
 
 // WASM is single-threaded; futures don't need Send
 #![allow(clippy::future_not_send)]
+// Bevy systems take Res, Query, etc. by value — clippy's lint is a false positive.
+#![allow(clippy::needless_pass_by_value)]
 
 mod audio;
 mod project;
@@ -165,14 +167,14 @@ async fn run() -> Result<(), JsValue> {
     app.add_systems(
         Update,
         (
-            activate_audio_on_click.before(web_audio_sync),
-            resume_suspended_audio
-                .after(activate_audio_on_click)
-                .before(web_audio_sync),
-            web_audio_sync.after(SpatialAudioSet),
+            // All systems taking NonSendMut<WebAudioEngine> are fully ordered:
+            // activate → resume → handle_pipe_placed → web_audio_sync
+            activate_audio_on_click.before(resume_suspended_audio),
+            resume_suspended_audio.before(handle_pipe_placed),
             handle_pipe_placed
                 .after(SpatialAudioSet)
                 .before(web_audio_sync),
+            web_audio_sync.after(SpatialAudioSet),
             update_nearest_track_info.after(SpatialAudioSet),
         ),
     );
@@ -193,7 +195,6 @@ async fn run() -> Result<(), JsValue> {
 }
 
 /// Spawn maze tiles from the pre-loaded `Maze` resource.
-#[allow(clippy::needless_pass_by_value)]
 fn setup_web_maze(
     mut commands: Commands,
     maze: Res<Maze>,
@@ -206,7 +207,6 @@ fn setup_web_maze(
 /// Spawn the background image and make maze tile sprites transparent.
 /// The background renders at z=-1 (behind tiles), and the lightmap at z=90
 /// still modulates brightness over it. Wall colliders and occluders are unchanged.
-#[allow(clippy::needless_pass_by_value)]
 fn setup_background(
     mut commands: Commands,
     mut bg_data: ResMut<BackgroundImageData>,
@@ -261,7 +261,6 @@ fn setup_background(
 
 /// Check the activation flag each frame. When the overlay is clicked,
 /// wire up the Web Audio graph and start playback.
-#[allow(clippy::needless_pass_by_value)]
 fn activate_audio_on_click(flag: Res<AudioActivationFlag>, mut engine: NonSendMut<WebAudioEngine>) {
     if flag.0.swap(false, Ordering::Relaxed) {
         web_sys::console::log_1(&"Activating audio engine...".into());
@@ -274,7 +273,6 @@ fn activate_audio_on_click(flag: Res<AudioActivationFlag>, mut engine: NonSendMu
 /// Resume the `AudioContext` if it was suspended by the browser (e.g. after
 /// backgrounding, device sleep, or tab switch). Browsers require a user gesture,
 /// so we only call resume when a click, touch, or D-pad press is detected.
-#[allow(clippy::needless_pass_by_value)]
 fn resume_suspended_audio(
     engine: NonSend<WebAudioEngine>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -297,7 +295,6 @@ fn resume_suspended_audio(
 ///
 /// Reads the interpolated gain/pan values from `TrackAudioState` (computed by
 /// `VvwGamePlugin`'s spatial audio systems) and pushes them to the Web Audio nodes.
-#[allow(clippy::needless_pass_by_value)]
 fn web_audio_sync(
     mut engine: NonSendMut<WebAudioEngine>,
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
@@ -319,7 +316,6 @@ struct CurrentTrackInfo {
 
 /// Show info for the loudest audible track automatically.
 /// Updates the foldout whenever the loudest track changes.
-#[allow(clippy::needless_pass_by_value)]
 fn update_nearest_track_info(
     track_query: Query<(&TrackIcon, &TrackAudioState), Without<PipeSpeaker>>,
     mut current: ResMut<CurrentTrackInfo>,
@@ -359,7 +355,6 @@ fn update_nearest_track_info(
 }
 
 /// Fork the Web Audio graph when a pipe is placed.
-#[allow(clippy::needless_pass_by_value)]
 fn handle_pipe_placed(
     mut messages: MessageReader<PipePlaced>,
     mut engine: NonSendMut<WebAudioEngine>,

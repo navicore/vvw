@@ -92,7 +92,6 @@ impl Plugin for PlayerPlugin {
 /// Player sprite color
 const PLAYER_COLOR: Color = Color::srgb(0.2, 0.7, 0.3);
 
-#[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value
 fn spawn_player(
     mut commands: Commands,
     maze: Res<Maze>,
@@ -152,7 +151,6 @@ fn spawn_player(
 /// Rotation speed for flashlight mode (radians per second)
 pub const ROTATION_SPEED: f32 = 3.0;
 
-#[allow(clippy::needless_pass_by_value)] // Bevy system parameters must be passed by value
 pub fn handle_player_input(
     time: Res<Time>,
     lighting: Res<LightingConfig>,
@@ -226,7 +224,6 @@ pub fn handle_player_input(
 }
 
 /// Keep `tile_pos` in sync with the physics-driven `Transform`
-#[allow(clippy::needless_pass_by_value)]
 fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player>>) {
     for (transform, mut movement) in &mut query {
         let new_tile_pos = TilePos::from_world(transform.translation.truncate());
@@ -237,7 +234,6 @@ fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player
 }
 
 /// Sync the player's heading into the flashlight direction and sprite rotation.
-#[allow(clippy::needless_pass_by_value)]
 pub fn sync_player_light(
     player_query: Query<(&PlayerHeading, &Children), With<Player>>,
     mut light_query: Query<&mut PointLight2d, With<PlayerLight>>,

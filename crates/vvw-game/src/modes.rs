@@ -144,7 +144,6 @@ impl Plugin for InteractionModesPlugin {
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn registry_has_modes(registry: Res<ModeRegistry>) -> bool {
     !registry.is_empty()
 }
@@ -191,7 +190,6 @@ fn register_mock2(mut registry: ResMut<ModeRegistry>) {
     });
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn log_mode_changes(active: Res<ActiveMode>) {
     if let Some(id) = &active.0 {
         info!("Mode activated: {}", id.0);
@@ -206,7 +204,6 @@ fn log_mode_changes(active: Res<ActiveMode>) {
 ///
 /// Takes `Option<ResMut<ActiveMode>>` via a helper to avoid borrowing
 /// `ResMut` (and triggering change detection) on frames where we don't write.
-#[allow(clippy::needless_pass_by_value)]
 fn detect_toggle_gesture(
     keyboard: Res<ButtonInput<KeyCode>>,
     touches: Res<Touches>,
@@ -327,7 +324,6 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
 }
 
 /// Escape key dismisses control surface and clears active mode.
-#[allow(clippy::needless_pass_by_value)]
 fn detect_dismiss(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut visible: ResMut<ControlSurfaceVisible>,
@@ -344,7 +340,6 @@ fn detect_dismiss(
 
 // ── Control surface UI ─────────────────────────────────────────────────────
 
-#[allow(clippy::needless_pass_by_value)]
 fn spawn_control_surface(mut commands: Commands, registry: Res<ModeRegistry>) {
     if registry.is_empty() {
         return;
@@ -426,7 +421,6 @@ fn mode_button_node() -> Node {
 }
 
 /// Show/hide the control surface container when visibility changes.
-#[allow(clippy::needless_pass_by_value)]
 fn update_surface_visibility(
     visible: Res<ControlSurfaceVisible>,
     mut query: Query<&mut Visibility, With<ControlSurfaceOverlay>>,
@@ -444,7 +438,6 @@ fn update_surface_visibility(
 }
 
 /// Cycle through registered modes on button press.
-#[allow(clippy::needless_pass_by_value)]
 fn handle_cycle_click(
     registry: Res<ModeRegistry>,
     mut selected: ResMut<SelectedModeIndex>,
@@ -469,7 +462,6 @@ fn handle_cycle_click(
 }
 
 /// Activate or deactivate the selected mode on action button press.
-#[allow(clippy::needless_pass_by_value)]
 fn handle_action_click(
     registry: Res<ModeRegistry>,
     mut selected: ResMut<SelectedModeIndex>,
@@ -499,7 +491,6 @@ fn handle_action_click(
 /// Update button visuals based on active state and interaction.
 /// Only writes components when values actually change to avoid spurious
 /// change-detection signals every frame.
-#[allow(clippy::needless_pass_by_value)]
 fn update_action_visual(
     active: Res<ActiveMode>,
     registry: Res<ModeRegistry>,
