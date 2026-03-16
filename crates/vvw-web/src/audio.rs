@@ -50,6 +50,8 @@ struct WebTrack {
     is_fork: bool,
     /// For fork entries: the source track ID whose element feeds this fork's gain.
     source_id: Option<usize>,
+    /// Last gain value set via `set_volume`, used to check if a fork is audible.
+    last_set_gain: f32,
 }
 
 /// A track that hasn't been wired into the Web Audio graph yet.
@@ -144,6 +146,7 @@ impl WebAudioEngine {
                     silent_secs: 0.0,
                     is_fork: false,
                     source_id: None,
+                    last_set_gain: 0.0,
                 },
             );
         }
@@ -172,9 +175,10 @@ impl WebAudioEngine {
     }
 
     /// Set volume for a track (0.0 = silent, 1.0 = full)
-    pub fn set_volume(&self, id: usize, amplitude: f32) {
-        if let Some(track) = self.tracks.get(&id) {
+    pub fn set_volume(&mut self, id: usize, amplitude: f32) {
+        if let Some(track) = self.tracks.get_mut(&id) {
             track.gain_node.gain().set_value(amplitude);
+            track.last_set_gain = amplitude;
         }
     }
 
@@ -207,10 +211,13 @@ impl WebAudioEngine {
             return;
         }
 
-        // Check if any fork references this source — if so, don't pause the
-        // source even if the player is far from it. The fork needs the source's
-        // `<audio>` element to keep playing to produce signal.
-        let has_active_fork = self.tracks.values().any(|t| t.source_id == Some(id));
+        // Check if any fork of this source is currently audible — if so, don't
+        // pause the source. Uses `last_set_gain` (updated by `set_volume` each
+        // frame) to avoid the fade-in race of reading live AudioParam values.
+        let has_active_fork = self
+            .tracks
+            .values()
+            .any(|t| t.source_id == Some(id) && t.last_set_gain > 0.001);
 
         let Some(track) = self.tracks.get_mut(&id) else {
             return;
@@ -294,6 +301,9 @@ impl WebAudioEngine {
             .tracks
             .get(&source_id)
             .ok_or("source track not found")?;
+        if source.is_fork {
+            return Err("cannot fork a fork — source must be an original track".into());
+        }
         let source_node = source
             .source_node
             .as_ref()
@@ -334,6 +344,7 @@ impl WebAudioEngine {
                 silent_secs: 0.0,
                 is_fork: true,
                 source_id: Some(source_id),
+                last_set_gain: 0.0,
             },
         );
 
