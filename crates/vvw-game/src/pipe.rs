@@ -94,6 +94,9 @@ impl Plugin for SoundPipePlugin {
             .add_systems(Startup, register_pipe_mode)
             .add_systems(
                 Update,
+                // Chain is load-bearing: on deactivation, `watch_mode_changes`
+                // sets `state.active = false`; `update_pipe_preview` must run
+                // after to see the updated state and despawn preview dashes.
                 (watch_mode_changes, update_pipe_preview)
                     .chain()
                     .run_if(resource_changed::<ActiveMode>.or(pipe_placement_active)),
@@ -125,7 +128,7 @@ fn watch_mode_changes(
     mut registry: ResMut<PipeRegistry>,
     mut pipe_messages: MessageWriter<PipePlaced>,
     player_query: Query<&Transform, With<Player>>,
-    track_query: Query<(&TrackIcon, &TrackAudioState)>,
+    track_query: Query<(&TrackIcon, &TrackAudioState), Without<PipeSpeaker>>,
     mut commands: Commands,
 ) {
     if !active.is_changed() {

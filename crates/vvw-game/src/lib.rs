@@ -30,7 +30,7 @@ pub use modes::{
     ActiveMode, InteractionModesPlugin, MockFeature1Plugin, MockFeature2Plugin, ModeId,
     ModeRegistry,
 };
-pub use pipe::{PipePlaced, SoundPipePlugin};
+pub use pipe::{PipePlaced, PipeSpeaker, SoundPipePlugin};
 pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};
 pub use sound_visuals::SoundVisualsEnabled;
 pub use tiles::{TILE_SIZE, TileKind, TilePos};

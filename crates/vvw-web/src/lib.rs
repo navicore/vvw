@@ -18,9 +18,9 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, PipePlaced, SoundPipePlugin,
-    SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter,
-    VvwGamePlugin, spawn_maze_tiles,
+    Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, PipePlaced, PipeSpeaker,
+    SoundPipePlugin, SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon,
+    TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -321,7 +321,7 @@ struct CurrentTrackInfo {
 /// Updates the foldout whenever the loudest track changes.
 #[allow(clippy::needless_pass_by_value)]
 fn update_nearest_track_info(
-    track_query: Query<(&TrackIcon, &TrackAudioState)>,
+    track_query: Query<(&TrackIcon, &TrackAudioState), Without<PipeSpeaker>>,
     mut current: ResMut<CurrentTrackInfo>,
 ) {
     // Find the loudest audible track. Hysteresis: a new track must exceed

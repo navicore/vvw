@@ -207,13 +207,10 @@ impl WebAudioEngine {
             return;
         }
 
-        // Check if any fork of this source is still audible — if so, don't
-        // pause the source even if the player is far from it. Forks never
-        // update `paused_for_distance`, so check their gain node value instead.
-        let has_active_fork = self
-            .tracks
-            .values()
-            .any(|t| t.source_id == Some(id) && t.gain_node.gain().value() > 0.001);
+        // Check if any fork references this source — if so, don't pause the
+        // source even if the player is far from it. The fork needs the source's
+        // `<audio>` element to keep playing to produce signal.
+        let has_active_fork = self.tracks.values().any(|t| t.source_id == Some(id));
 
         let Some(track) = self.tracks.get_mut(&id) else {
             return;
