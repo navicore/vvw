@@ -12,7 +12,9 @@
 use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
-use web_sys::{AudioContext, AudioContextState, GainNode, HtmlAudioElement};
+use web_sys::{
+    AudioContext, AudioContextState, GainNode, HtmlAudioElement, MediaElementAudioSourceNode,
+};
 
 /// Panner abstraction: `StereoPannerNode` where supported, no-op otherwise.
 enum Panner {
@@ -32,6 +34,9 @@ impl Panner {
 /// `<audio>`(loop) -> media element source -> gain -> panner -> dest
 struct WebTrack {
     audio_el: HtmlAudioElement,
+    /// The `MediaElementAudioSourceNode` — kept so forks can connect directly
+    /// to the raw audio signal, bypassing this track's gain node.
+    source_node: Option<MediaElementAudioSourceNode>,
     gain_node: GainNode,
     panner: Panner,
     /// Original audio URL, stored so we can restore it after clearing src.
@@ -40,6 +45,11 @@ struct WebTrack {
     paused_for_distance: bool,
     /// Seconds the track has been in the silent zone. Pause after debounce threshold.
     silent_secs: f32,
+    /// True for pipe speaker entries — they share the source's `<audio>` element
+    /// and must NOT call `play`/`pause`/`set_src`/`load` on it.
+    is_fork: bool,
+    /// For fork entries: the source track ID whose element feeds this fork's gain.
+    source_id: Option<usize>,
 }
 
 /// A track that hasn't been wired into the Web Audio graph yet.
@@ -117,11 +127,14 @@ impl WebAudioEngine {
                 pending.id,
                 WebTrack {
                     audio_el: pending.audio_el,
+                    source_node: Some(source),
                     gain_node,
                     panner,
                     url,
                     paused_for_distance: false,
                     silent_secs: 0.0,
+                    is_fork: false,
+                    source_id: None,
                 },
             );
         }
@@ -164,11 +177,24 @@ impl WebAudioEngine {
             return;
         }
 
+        // Check fork status before mutable borrow
+        let is_fork = self.tracks.get(&id).is_some_and(|t| t.is_fork);
+        if is_fork {
+            return;
+        }
+
+        // Check if any fork of this source is still in range — if so, don't
+        // pause the source even if the player is far from it.
+        let has_active_fork = self
+            .tracks
+            .values()
+            .any(|t| t.source_id == Some(id) && !t.paused_for_distance);
+
         let Some(track) = self.tracks.get_mut(&id) else {
             return;
         };
 
-        if distance < PREFETCH_DISTANCE {
+        if distance < PREFETCH_DISTANCE || has_active_fork {
             // Within range: resume immediately if paused for distance
             track.silent_secs = 0.0;
             if track.paused_for_distance {
@@ -217,6 +243,68 @@ impl WebAudioEngine {
                 web_sys::console::error_1(&format!("track {id} play() failed: {e:?}").into());
             }
         }
+    }
+
+    /// Fork a source track's audio graph for a pipe speaker.
+    ///
+    /// Creates a new gain + panner chain connected to the source's
+    /// `MediaElementAudioSourceNode` (via re-connecting from the source's
+    /// gain node input). The fork entry has its own gain/pan controls but
+    /// does NOT own the `<audio>` element.
+    pub fn fork_track(&mut self, source_id: usize, new_id: usize) -> Result<(), JsValue> {
+        if !self.activated {
+            return Err("engine not activated".into());
+        }
+
+        let source = self
+            .tracks
+            .get(&source_id)
+            .ok_or("source track not found")?;
+        let source_node = source
+            .source_node
+            .as_ref()
+            .ok_or("source track has no MediaElementAudioSourceNode")?;
+
+        // Create independent gain + panner for the fork
+        let gain_node = self.ctx.create_gain()?;
+        gain_node.gain().set_value(0.0);
+
+        let panner = if let Ok(panner_node) = web_sys::StereoPannerNode::new(&self.ctx) {
+            panner_node.pan().set_value(0.0);
+            // Connect: source's MediaElementAudioSourceNode → fork gain → fork panner → dest
+            // This taps the raw audio signal directly, so the fork's volume is
+            // independent of the source track's gain node.
+            source_node.connect_with_audio_node(&gain_node)?;
+            gain_node.connect_with_audio_node(&panner_node)?;
+            panner_node.connect_with_audio_node(&self.ctx.destination())?;
+            Panner::Stereo(panner_node)
+        } else {
+            source_node.connect_with_audio_node(&gain_node)?;
+            gain_node.connect_with_audio_node(&self.ctx.destination())?;
+            Panner::None
+        };
+
+        // Fork shares the source's audio element but must never control it
+        let audio_el = source.audio_el.clone();
+        let url = source.url.clone();
+
+        self.tracks.insert(
+            new_id,
+            WebTrack {
+                audio_el,
+                source_node: None,
+                gain_node,
+                panner,
+                url,
+                paused_for_distance: false,
+                silent_secs: 0.0,
+                is_fork: true,
+                source_id: Some(source_id),
+            },
+        );
+
+        web_sys::console::log_1(&format!("Forked track {source_id} → speaker {new_id}").into());
+        Ok(())
     }
 
     /// Returns true if audio needs resuming: either the `AudioContext` is

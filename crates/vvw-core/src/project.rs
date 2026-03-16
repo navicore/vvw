@@ -18,6 +18,7 @@ pub struct TrackEntry {
 
 /// Album-level metadata for web publishing
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct AlbumMetadata {
     pub title: String,
     pub artist: String,
@@ -38,6 +39,9 @@ pub struct AlbumMetadata {
     /// Mock feature 2 — registers a second mode for testing mode cycling
     #[serde(default)]
     pub mock_feature2: bool,
+    /// Enable sound piping — route audio from distant tracks to new locations
+    #[serde(default)]
+    pub sound_piping: bool,
 }
 
 /// Per-track metadata for web publishing
@@ -161,6 +165,7 @@ mod tests {
                 sound_visuals: false,
                 mock_feature1: false,
                 mock_feature2: false,
+                sound_piping: false,
             },
         };
 

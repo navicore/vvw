@@ -245,6 +245,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             sound_visuals: false,
             mock_feature1: false,
             mock_feature2: false,
+            sound_piping: false,
         },
     };
 

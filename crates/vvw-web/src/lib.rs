@@ -18,8 +18,9 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, SoundVisualsEnabled, SpatialAudioSet,
-    TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
+    Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, PipePlaced, SoundPipePlugin,
+    SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter,
+    VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -157,6 +158,9 @@ async fn run() -> Result<(), JsValue> {
     if loaded.manifest.album.mock_feature2 {
         app.add_plugins(MockFeature2Plugin);
     }
+    if loaded.manifest.album.sound_piping {
+        app.add_plugins(SoundPipePlugin);
+    }
 
     app.add_systems(
         Update,
@@ -166,6 +170,7 @@ async fn run() -> Result<(), JsValue> {
                 .after(activate_audio_on_click)
                 .before(web_audio_sync),
             web_audio_sync.after(SpatialAudioSet),
+            handle_pipe_placed.after(SpatialAudioSet),
             update_nearest_track_info.after(SpatialAudioSet),
         ),
     );
@@ -347,6 +352,25 @@ fn update_nearest_track_info(
             ui::dispatch_track_select(id);
         } else {
             ui::dispatch_track_hide();
+        }
+    }
+}
+
+/// Fork the Web Audio graph when a pipe is placed.
+#[allow(clippy::needless_pass_by_value)]
+fn handle_pipe_placed(
+    mut messages: MessageReader<PipePlaced>,
+    mut engine: NonSendMut<WebAudioEngine>,
+) {
+    for event in messages.read() {
+        if let Err(e) = engine.fork_track(event.source_track_id, event.speaker_track_id) {
+            web_sys::console::error_1(
+                &format!(
+                    "Failed to fork track {} → {}: {e:?}",
+                    event.source_track_id, event.speaker_track_id
+                )
+                .into(),
+            );
         }
     }
 }
