@@ -4,6 +4,8 @@ An audio exploration game where you navigate a 2D maze to discover and experienc
 
 Built with [Bevy](https://bevyengine.org/) and compiled to WASM. Deployed on Cloudflare Pages with audio streaming from R2.
 
+![Maze with background artwork, lighting, and a sound pipe](docs/images/catcoin-screen-01.png)
+
 ## How It Works
 
 You control a player navigating a tile-based maze. Scattered throughout the maze are audio track icons, each playing a different track from an album. Volume and stereo panning are determined by line-of-sight and distance — walk toward a track and it gets louder, lose line of sight and it fades to silence.
