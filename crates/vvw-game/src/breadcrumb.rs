@@ -21,6 +21,9 @@ const WALK_TRAIL_MODE_ID: &str = "walk_trail";
 /// Sample interval: 10 Hz
 const SAMPLE_INTERVAL: f32 = 0.1;
 
+/// Maximum number of samples (10 min at 10 Hz)
+const MAX_SAMPLES: usize = 6_000;
+
 /// Visual dot size (world units)
 const DOT_SIZE: f32 = 4.0;
 /// Dot color during recording
@@ -214,6 +217,16 @@ fn watch_mode_changes(
                 return;
             }
 
+            // Handle direct transition from recording
+            if matches!(state.phase, BreadcrumbPhase::Recording) {
+                state.phase = BreadcrumbPhase::Idle;
+                info!(
+                    "Breadcrumb: recording stopped — {} samples, {:.1}s",
+                    state.trail.samples.len(),
+                    state.trail.duration()
+                );
+            }
+
             if !state.trail.is_valid() {
                 info!("Breadcrumb: no trail to walk");
                 return;
@@ -291,38 +304,38 @@ fn record_samples(
         return;
     }
 
+    // Drain accumulated intervals (handles frame spikes) but record one sample
+    let pending = (state.sample_timer / SAMPLE_INTERVAL) as u32;
+    state.sample_timer -= pending as f32 * SAMPLE_INTERVAL;
+    state.sample_count += pending;
+
+    if state.trail.samples.len() >= MAX_SAMPLES {
+        return;
+    }
+
     let Ok((tf, heading)) = player_query.single() else {
         return;
     };
 
     let pos = tf.translation.truncate();
+    let elapsed = state.sample_count as f32 * SAMPLE_INTERVAL;
 
-    // Drain all accumulated intervals (handles frame spikes)
-    let pending = (state.sample_timer / SAMPLE_INTERVAL) as u32;
-    state.sample_timer -= pending as f32 * SAMPLE_INTERVAL;
+    state.trail.samples.push(Breadcrumb {
+        position: pos,
+        heading: heading.0,
+        elapsed,
+    });
 
-    for _ in 0..pending {
-        state.sample_count += 1;
-
-        let elapsed = state.sample_count as f32 * SAMPLE_INTERVAL;
-
-        state.trail.samples.push(Breadcrumb {
-            position: pos,
-            heading: heading.0,
-            elapsed,
-        });
-
-        // Spawn a visual dot at this sample point
-        commands.spawn((
-            BreadcrumbDot,
-            Sprite {
-                color: DOT_COLOR,
-                custom_size: Some(Vec2::splat(DOT_SIZE)),
-                ..default()
-            },
-            Transform::from_xyz(pos.x, pos.y, 0.3),
-        ));
-    }
+    // Spawn a visual dot at this sample point
+    commands.spawn((
+        BreadcrumbDot,
+        Sprite {
+            color: DOT_COLOR,
+            custom_size: Some(Vec2::splat(DOT_SIZE)),
+            ..default()
+        },
+        Transform::from_xyz(pos.x, pos.y, 0.3),
+    ));
 }
 
 // ── Replay ──────────────────────────────────────────────────────────────────
@@ -330,10 +343,7 @@ fn record_samples(
 fn replay_trail(
     time: Res<Time>,
     mut state: ResMut<BreadcrumbState>,
-    mut player_query: Query<
-        (&mut Transform, &mut LinearVelocity, &mut PlayerHeading),
-        With<Player>,
-    >,
+    mut player_query: Query<(&mut Position, &mut LinearVelocity, &mut PlayerHeading), With<Player>>,
 ) {
     if !matches!(state.phase, BreadcrumbPhase::Playing) {
         return;
@@ -369,12 +379,11 @@ fn replay_trail(
     // When walking backward, reverse the heading
     let effective_heading = if state.replay_backward { -hdg } else { hdg };
 
-    let Ok((mut tf, mut velocity, mut heading)) = player_query.single_mut() else {
+    let Ok((mut position, mut velocity, mut heading)) = player_query.single_mut() else {
         return;
     };
 
-    tf.translation.x = pos.x;
-    tf.translation.y = pos.y;
+    position.0 = pos;
     velocity.0 = Vec2::ZERO;
     heading.0 = effective_heading.normalize_or(Vec2::Y);
 }
