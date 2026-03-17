@@ -13,6 +13,7 @@
 //! The platform inserts the `Maze` resource; this plugin handles everything else.
 
 mod audio;
+pub mod breadcrumb;
 mod camera;
 mod maze;
 pub mod mazegen;
@@ -25,6 +26,7 @@ mod tiles;
 mod touch;
 
 pub use audio::{SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackIdCounter};
+pub use breadcrumb::BreadcrumbPlugin;
 pub use camera::{CameraPlugin, GameCamera};
 pub use maze::{
     Maze, MazeChanged, MazePlugin, MazeTile, TrackIcon, TrackLight, colors, spawn_maze_tiles,
