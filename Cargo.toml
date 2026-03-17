@@ -44,7 +44,7 @@ bevy = { version = "0.18", default-features = false, features = [
 # Must match the glam version re-exported by bevy; verify with `cargo tree -p glam`
 glam = "0.30"
 leafwing-input-manager = "0.20"
-avian2d = "0.5"
+avian2d = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
