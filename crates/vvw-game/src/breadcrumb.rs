@@ -304,14 +304,14 @@ fn record_samples(
         return;
     }
 
+    if state.trail.samples.len() >= MAX_SAMPLES {
+        return;
+    }
+
     // Drain accumulated intervals (handles frame spikes) but record one sample
     let pending = (state.sample_timer / SAMPLE_INTERVAL) as u32;
     state.sample_timer -= pending as f32 * SAMPLE_INTERVAL;
     state.sample_count += pending;
-
-    if state.trail.samples.len() >= MAX_SAMPLES {
-        return;
-    }
 
     let Ok((tf, heading)) = player_query.single() else {
         return;
@@ -356,23 +356,20 @@ fn replay_trail(
         return;
     }
 
-    // Advance cursor
+    // Advance cursor with clamped bounce at trail ends
     if state.replay_backward {
         state.replay_cursor -= dt;
         if state.replay_cursor <= 0.0 {
-            state.replay_cursor = -state.replay_cursor; // bounce
+            state.replay_cursor = (-state.replay_cursor).min(duration);
             state.replay_backward = false;
         }
     } else {
         state.replay_cursor += dt;
         if state.replay_cursor >= duration {
-            state.replay_cursor = 2.0f32.mul_add(duration, -state.replay_cursor); // bounce
+            state.replay_cursor = 2.0f32.mul_add(duration, -state.replay_cursor).max(0.0);
             state.replay_backward = true;
         }
     }
-
-    // Clamp to valid range
-    state.replay_cursor = state.replay_cursor.clamp(0.0, duration);
 
     let (pos, hdg) = state.trail.sample_at(state.replay_cursor);
 
