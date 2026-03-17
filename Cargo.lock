@@ -6317,7 +6317,7 @@ dependencies = [
 
 [[package]]
 name = "vvw-core"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "bevy",
  "glam",
@@ -6328,7 +6328,7 @@ dependencies = [
 
 [[package]]
 name = "vvw-deploy"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -6343,7 +6343,7 @@ dependencies = [
 
 [[package]]
 name = "vvw-game"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "avian2d",
  "bevy",
@@ -6355,7 +6355,7 @@ dependencies = [
 
 [[package]]
 name = "vvw-light"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "bevy",
  "serde",
@@ -6364,7 +6364,7 @@ dependencies = [
 
 [[package]]
 name = "vvw-web"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "bevy",
  "console_error_panic_hook",
