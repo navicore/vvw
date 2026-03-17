@@ -20,9 +20,10 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    BreadcrumbPlugin, Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, PipePlaced,
-    PipeSpeaker, SoundPipePlugin, SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState,
-    TrackIcon, TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
+    ActiveMode, BreadcrumbPlugin, MUTE_MODE_ID, Maze, MazeTile, MockFeature1Plugin,
+    MockFeature2Plugin, PipePlaced, PipeSpeaker, SoundPipePlugin, SoundVisualsEnabled,
+    SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
+    spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -308,11 +309,17 @@ fn resume_suspended_audio(
 fn web_audio_sync(
     mut engine: NonSendMut<WebAudioEngine>,
     track_query: Query<(&TrackIcon, &TrackAudioState)>,
+    active_mode: Res<ActiveMode>,
     time: Res<Time>,
 ) {
+    let muted = active_mode
+        .0
+        .as_ref()
+        .is_some_and(|id| id.0 == MUTE_MODE_ID);
     let dt = time.delta_secs();
     for (track_icon, state) in &track_query {
-        engine.set_volume(track_icon.track_id, state.current_gain);
+        let gain = if muted { 0.0 } else { state.current_gain };
+        engine.set_volume(track_icon.track_id, gain);
         engine.set_panning(track_icon.track_id, state.current_pan);
         engine.update_streaming(track_icon.track_id, state.distance, dt);
     }
