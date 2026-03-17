@@ -1,64 +1,52 @@
-# Playback Controls — Start / Pause / Mute
+# Playback Controls — Mute Mode
 
 ## Intent
 
-Two UX problems to solve:
+Users need a way to quickly silence all audio without closing the tab — take a call, listen to something else, or just pause the soundscape. Today there's no control for this.
 
-1. **Why won't it move?** — *(Partially solved: the overlay click handler now focuses the canvas and touch controls provide mobile input.)* New users still see a generic "Click anywhere to start" with no play/pause affordance.
-
-2. **Boss key** — Users need a way to quickly mute/pause audio without closing the tab. There's no control for this today.
-
-**Goal:** Replace the ambiguous overlay flow with a clear play/pause button that (a) doubles as the initial start action, (b) gives the canvas focus, and (c) lets users mute/pause at any time.
+**Why.** The maze is an ambient experience. Users leave it running. They need a fast mute/unmute toggle that doesn't disrupt their position or the visual state.
 
 ## Constraints
 
-- The canvas must receive keyboard focus after clicking play — arrow keys must work immediately.
-- Browser autoplay policy: `AudioContext.resume()` and `<audio>.play()` must happen inside a user gesture (click). The play button satisfies this.
-- Must not break existing spatial audio, track foldout, or album header.
-- Keep the overlay for the initial album title display — it's good branding. The play button lives on the overlay and replaces "Click anywhere to start."
-- Minimal visual footprint during gameplay — the button should be unobtrusive once playing.
-
-**Out of scope:** Seek, skip, volume slider, per-track mute. Those are future work.
+- **Use the interaction modes framework.** Mute is registered as a mode. When active, all audio is silenced. When deactivated, audio resumes. The control surface (two-finger tap / right-click / Tab) provides the toggle.
+- **Don't break spatial audio.** `TrackAudioState` continues to be computed normally. Only the platform layer's volume output is zeroed. When unmuted, audio resumes at the correct spatial levels immediately — no fade-in delay.
+- **Don't break other modes.** Mute can coexist with piping, breadcrumbs, etc. `suppresses_movement: false`.
+- **No HTML/JS changes.** This is a pure Bevy + platform-layer feature. The existing overlay click flow for initial audio activation is unchanged.
+- **Out of scope:** Per-track mute, volume slider, seek, skip. The overlay play button redesign (replacing "Click anywhere to start" with a styled play button) is separate work.
 
 ## Approach
 
-### HTML/CSS (index.html)
+### Mute mode plugin (vvw-game)
 
-- Add a play/pause button to the album header bar (visible during gameplay).
-- On the start overlay, replace "Click anywhere to start" with a green play triangle button. Clicking it runs the existing `setup_overlay_click` logic (resume AudioContext, play all tracks, hide overlay, show header) **and** focuses the canvas.
-- Button states: green play arrow (paused/initial) ↔ red pause icon (playing).
-- CSS-only icons (Unicode or border-trick triangles) — no image assets.
+Register a "Mute" mode (`ModeDescriptor` with `suppresses_movement: false`). No game-layer systems needed — the mode's active/inactive state is the only signal.
 
-### JS (index.html script)
+### Platform layer (vvw-web)
 
-- `togglePlayback()`: if playing → `AudioContext.suspend()`, swap to play icon; if paused → `AudioContext.resume()`, swap to pause icon, re-focus canvas.
-- The overlay click calls `togglePlayback()` + hides overlay + shows header.
-- The header button calls `togglePlayback()`.
+A system checks `ActiveMode` for the mute mode ID. When active, set a `muted: bool` flag on a resource. `web_audio_sync` reads this flag: when muted, set all track volumes to 0.0 regardless of `TrackAudioState`. When unmuted, resume normal behavior.
 
-### WASM (lib.rs)
+This approach:
+- Keeps the `AudioContext` running (no `suspend()`/`resume()` gesture issues)
+- Preserves `TrackAudioState` computation so unmute is instant
+- Avoids touching `<audio>` elements (no play/pause race conditions)
 
-- `setup_overlay_click` passes the `AudioContext` reference to a global JS variable (or attaches it to the button's dataset) so the header button's JS can call `suspend()`/`resume()`.
-- Alternatively, expose `AudioContext` via a small JS bridge function set during `setup_overlay_click`.
+### Alternative considered: `AudioContext.suspend()`
 
-### Canvas focus
-
-- After play is clicked (overlay or header), call `document.getElementById('game-canvas').focus()`. Bevy's `prevent_default_event_handling: true` already captures keys once focused.
+Suspending the context is cleaner but requires a user gesture to resume on some browsers. Since the mode toggle already happens via gesture (tap/click), this could work — but zeroing gain is simpler and avoids platform-specific resume behavior.
 
 ## Domain Events
 
 | Event | Producer | Consumer |
 |-------|----------|----------|
-| Overlay play click | User | JS: resume AudioContext, play tracks, hide overlay, show header, focus canvas |
-| Header pause click | User | JS: suspend AudioContext, swap icon to play |
-| Header play click | User | JS: resume AudioContext, swap icon to pause, focus canvas |
+| `ActiveMode` changes to mute | Mode framework (user gesture) | Platform layer: zero all gains |
+| `ActiveMode` changes away from mute | Mode framework (user gesture) | Platform layer: restore normal gains |
 
-No new Bevy-side events — `AudioContext.suspend()` freezes all audio nodes automatically. The game loop keeps running (avatar still moves), only sound stops.
+No new messages or Bevy events needed.
 
 ## Checkpoints
 
-- [ ] First visit: overlay shows album title + green play button (not "click anywhere")
-- [ ] Clicking play: audio starts, overlay hides, header appears with pause button, avatar responds to arrow keys immediately
-- [ ] Clicking pause in header: audio stops, icon swaps to play
-- [ ] Clicking play in header: audio resumes, canvas re-focused
-- [ ] Mobile: buttons are tap-friendly (min 44px touch target)
-- [ ] No regression on track foldout, spatial audio, or album info display
+- [ ] "Mute" mode registers in the interaction mode framework and cycles correctly
+- [ ] Activating mute silences all audio immediately
+- [ ] Spatial audio state continues updating while muted (player can walk around)
+- [ ] Deactivating mute restores audio at correct spatial levels — no pop or fade delay
+- [ ] Mute works alongside other active features (pipes, breadcrumbs)
+- [ ] No browser autoplay issues on unmute (no `suspend()`/`resume()` needed)
