@@ -97,9 +97,9 @@ impl BreadcrumbTrail {
 struct BreadcrumbState {
     phase: BreadcrumbPhase,
     trail: BreadcrumbTrail,
-    /// Elapsed time during recording
-    record_elapsed: f32,
-    /// Time since last sample was taken
+    /// Number of samples taken (used for monotonic elapsed timestamps)
+    sample_count: u32,
+    /// Accumulated time since last sample
     sample_timer: f32,
     /// Cursor position during replay (in trail elapsed-time space)
     replay_cursor: f32,
@@ -118,7 +118,7 @@ impl Default for BreadcrumbState {
         Self {
             phase: BreadcrumbPhase::Idle,
             trail: BreadcrumbTrail::default(),
-            record_elapsed: 0.0,
+            sample_count: 0,
             sample_timer: 0.0,
             replay_cursor: 0.0,
             replay_backward: true, // first pass walks backward
@@ -172,7 +172,7 @@ fn register_breadcrumb_modes(mut registry: ResMut<ModeRegistry>) {
 fn watch_mode_changes(
     active: Res<ActiveMode>,
     mut state: ResMut<BreadcrumbState>,
-    player_query: Query<&Transform, With<Player>>,
+    player_query: Query<(&Transform, &PlayerHeading), With<Player>>,
     dot_query: Query<Entity, With<BreadcrumbDot>>,
     mut commands: Commands,
 ) {
@@ -193,15 +193,15 @@ fn watch_mode_changes(
                 commands.entity(entity).despawn();
             }
             state.trail = BreadcrumbTrail::default();
-            state.record_elapsed = 0.0;
+            state.sample_count = 0;
             state.sample_timer = 0.0;
             state.phase = BreadcrumbPhase::Recording;
 
             // Take the first sample immediately
-            if let Ok(tf) = player_query.single() {
+            if let Ok((tf, heading)) = player_query.single() {
                 state.trail.samples.push(Breadcrumb {
                     position: tf.translation.truncate(),
-                    heading: Vec2::Y,
+                    heading: heading.0,
                     elapsed: 0.0,
                 });
             }
@@ -285,38 +285,44 @@ fn record_samples(
         return;
     }
 
-    let dt = time.delta_secs();
-    state.record_elapsed += dt;
-    state.sample_timer += dt;
+    state.sample_timer += time.delta_secs();
 
     if state.sample_timer < SAMPLE_INTERVAL {
         return;
     }
-    state.sample_timer -= SAMPLE_INTERVAL;
 
     let Ok((tf, heading)) = player_query.single() else {
         return;
     };
 
     let pos = tf.translation.truncate();
-    let elapsed = state.record_elapsed;
 
-    state.trail.samples.push(Breadcrumb {
-        position: pos,
-        heading: heading.0,
-        elapsed,
-    });
+    // Drain all accumulated intervals (handles frame spikes)
+    let pending = (state.sample_timer / SAMPLE_INTERVAL) as u32;
+    state.sample_timer -= pending as f32 * SAMPLE_INTERVAL;
 
-    // Spawn a visual dot at this sample point
-    commands.spawn((
-        BreadcrumbDot,
-        Sprite {
-            color: DOT_COLOR,
-            custom_size: Some(Vec2::splat(DOT_SIZE)),
-            ..default()
-        },
-        Transform::from_xyz(pos.x, pos.y, 0.3),
-    ));
+    for _ in 0..pending {
+        state.sample_count += 1;
+
+        let elapsed = state.sample_count as f32 * SAMPLE_INTERVAL;
+
+        state.trail.samples.push(Breadcrumb {
+            position: pos,
+            heading: heading.0,
+            elapsed,
+        });
+
+        // Spawn a visual dot at this sample point
+        commands.spawn((
+            BreadcrumbDot,
+            Sprite {
+                color: DOT_COLOR,
+                custom_size: Some(Vec2::splat(DOT_SIZE)),
+                ..default()
+            },
+            Transform::from_xyz(pos.x, pos.y, 0.3),
+        ));
+    }
 }
 
 // ── Replay ──────────────────────────────────────────────────────────────────
