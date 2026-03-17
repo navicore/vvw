@@ -113,6 +113,7 @@ fn register_pipe_mode(mut registry: ResMut<ModeRegistry>) {
         id: ModeId(PIPE_MODE_ID.into()),
         label: "Pipe".into(),
         suppresses_movement: false,
+        order: 200,
     });
 }
 

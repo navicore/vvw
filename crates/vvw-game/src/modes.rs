@@ -1,8 +1,9 @@
 //! Interaction modes framework — shared mode registry, control surface, and gesture detection
 //!
-//! Features register modes at startup. The player toggles the control surface via
-//! right-click (desktop) / two-finger tap (mobile) / Tab key. The control surface
-//! lets the player cycle through modes and activate/deactivate them.
+//! Features register modes at startup. The player cycles through modes via
+//! Tab key (desktop) or two-finger tap (mobile). Each gesture advances to the
+//! next mode; after the last mode, the surface hides and any active mode is
+//! deactivated. The action button activates/deactivates the currently shown mode.
 //!
 //! Zero cost when no modes are registered — all systems are gated on a non-empty registry.
 
@@ -45,7 +46,7 @@ pub struct ActiveMode(pub Option<ModeId>);
 #[derive(Resource, Default)]
 struct ControlSurfaceVisible(bool);
 
-/// Which mode is selected (but not necessarily activated) in the cycle UI.
+/// Which mode is currently shown in the control surface.
 #[derive(Resource, Default)]
 struct SelectedModeIndex(usize);
 
@@ -84,26 +85,10 @@ const TAP_COOLDOWN: f64 = 0.5;
 struct ControlSurfaceOverlay;
 
 #[derive(Component)]
-struct CycleButton;
-
-#[derive(Component)]
 struct ActionButton;
 
 #[derive(Component)]
 struct ModeLabelText;
-
-// ── Query type aliases ─────────────────────────────────────────────────────
-
-type CycleButtonQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static Interaction,
-        &'static mut BorderColor,
-        &'static mut BackgroundColor,
-    ),
-    (With<CycleButton>, Without<ActionButton>),
->;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -113,7 +98,6 @@ const BUTTON_SIZE: f32 = 48.0;
 const BUTTON_GAP: f32 = 8.0;
 const SURFACE_ALPHA: f32 = 0.06;
 const SURFACE_PRESSED_ALPHA: f32 = 0.15;
-const INACTIVE_BORDER_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, SURFACE_ALPHA);
 
 // ── Plugin ─────────────────────────────────────────────────────────────────
 
@@ -131,10 +115,8 @@ impl Plugin for InteractionModesPlugin {
             .add_systems(
                 Update,
                 (
-                    detect_toggle_gesture,
-                    detect_dismiss,
+                    handle_cycle_gesture,
                     update_surface_visibility,
-                    handle_cycle_click,
                     handle_action_click,
                     update_action_visual,
                 )
@@ -169,6 +151,7 @@ fn register_mock1(mut registry: ResMut<ModeRegistry>) {
         id: ModeId("mock_feature1".into()),
         label: "Mock 1".into(),
         suppresses_movement: false,
+        order: 900,
     });
 }
 
@@ -187,6 +170,7 @@ fn register_mock2(mut registry: ResMut<ModeRegistry>) {
         id: ModeId("mock_feature2".into()),
         label: "Mock 2".into(),
         suppresses_movement: false,
+        order: 901,
     });
 }
 
@@ -200,26 +184,52 @@ fn log_mode_changes(active: Res<ActiveMode>) {
 
 // ── Gesture detection ──────────────────────────────────────────────────────
 
-/// Toggle control surface on Tab key or two-finger tap.
+/// Cycle through modes on Tab key or two-finger tap.
 ///
-/// Takes `Option<ResMut<ActiveMode>>` via a helper to avoid borrowing
-/// `ResMut` (and triggering change detection) on frames where we don't write.
-fn detect_toggle_gesture(
+/// - Hidden → show surface at first mode
+/// - Visible → advance to next mode
+/// - Past last mode → hide surface and deactivate any active mode
+#[allow(clippy::too_many_arguments)]
+fn handle_cycle_gesture(
     keyboard: Res<ButtonInput<KeyCode>>,
     touches: Res<Touches>,
     time: Res<Time>,
+    registry: Res<ModeRegistry>,
     mut tap_state: ResMut<TwoFingerTapState>,
     mut visible: ResMut<ControlSurfaceVisible>,
+    mut selected: ResMut<SelectedModeIndex>,
     active: Res<ActiveMode>,
+    mut label_query: Query<&mut Text, With<ModeLabelText>>,
     mut commands: Commands,
 ) {
-    let toggled = keyboard.just_pressed(KeyCode::Tab)
+    let triggered = keyboard.just_pressed(KeyCode::Tab)
         || detect_two_finger_tap(&touches, &time, &mut tap_state);
 
-    if toggled {
-        visible.0 = !visible.0;
-        // Dismissing the surface clears any active mode
-        if !visible.0 && active.0.is_some() {
+    if !triggered {
+        return;
+    }
+
+    if !visible.0 {
+        // Show surface at first mode
+        visible.0 = true;
+        selected.0 = 0;
+        if let Some(mode) = registry.modes.first() {
+            for mut text in &mut label_query {
+                (**text).clone_from(&mode.label);
+            }
+        }
+    } else if selected.0 + 1 < registry.modes.len() {
+        // Advance to next mode
+        selected.0 += 1;
+        if let Some(mode) = registry.modes.get(selected.0) {
+            for mut text in &mut label_query {
+                (**text).clone_from(&mode.label);
+            }
+        }
+    } else {
+        // Past last mode — hide and deactivate
+        visible.0 = false;
+        if active.0.is_some() {
             commands.insert_resource(ActiveMode(None));
         }
     }
@@ -323,27 +333,14 @@ fn detect_two_finger_tap(touches: &Touches, time: &Time, state: &mut TwoFingerTa
     false
 }
 
-/// Escape key dismisses control surface and clears active mode.
-fn detect_dismiss(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut visible: ResMut<ControlSurfaceVisible>,
-    active: Res<ActiveMode>,
-    mut commands: Commands,
-) {
-    if keyboard.just_pressed(KeyCode::Escape) && visible.0 {
-        visible.0 = false;
-        if active.0.is_some() {
-            commands.insert_resource(ActiveMode(None));
-        }
-    }
-}
-
 // ── Control surface UI ─────────────────────────────────────────────────────
 
-fn spawn_control_surface(mut commands: Commands, registry: Res<ModeRegistry>) {
+fn spawn_control_surface(mut commands: Commands, mut registry: ResMut<ModeRegistry>) {
     if registry.is_empty() {
         return;
     }
+
+    registry.modes.sort_by_key(|m| m.order);
 
     let initial_label = registry
         .modes
@@ -389,27 +386,13 @@ fn spawn_control_surface(mut commands: Commands, registry: Res<ModeRegistry>) {
     commands.entity(label_container).add_child(label);
     commands.entity(container).add_child(label_container);
 
-    // Cycle button — only when 2+ modes registered
-    if registry.modes.len() > 1 {
-        let cycle = commands
-            .spawn((
-                CycleButton,
-                mode_button_node(),
-                Interaction::None,
-                BorderColor::all(INACTIVE_BORDER_COLOR),
-                BackgroundColor(Color::srgba(0.5, 0.5, 1.0, SURFACE_ALPHA * 0.5)),
-            ))
-            .id();
-        commands.entity(container).add_child(cycle);
-    }
-
     // Action button — green border when active, dim when not
     let action = commands
         .spawn((
             ActionButton,
             mode_button_node(),
             Interaction::None,
-            BorderColor::all(INACTIVE_BORDER_COLOR),
+            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, SURFACE_ALPHA)),
             BackgroundColor(Color::NONE),
         ))
         .id();
@@ -445,30 +428,6 @@ fn update_surface_visibility(
     }
 }
 
-/// Cycle through registered modes on button press.
-fn handle_cycle_click(
-    registry: Res<ModeRegistry>,
-    mut selected: ResMut<SelectedModeIndex>,
-    cycle_query: Query<&Interaction, (Changed<Interaction>, With<CycleButton>)>,
-    mut label_query: Query<&mut Text, With<ModeLabelText>>,
-) {
-    for interaction in &cycle_query {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        if registry.modes.is_empty() {
-            return;
-        }
-        selected.0 = (selected.0 + 1) % registry.modes.len();
-        let Some(mode) = registry.modes.get(selected.0) else {
-            return;
-        };
-        for mut text in &mut label_query {
-            (**text).clone_from(&mode.label);
-        }
-    }
-}
-
 /// Activate or deactivate the selected mode on action button press.
 fn handle_action_click(
     registry: Res<ModeRegistry>,
@@ -496,7 +455,7 @@ fn handle_action_click(
     }
 }
 
-/// Update button visuals based on active state and interaction.
+/// Update action button visuals based on active state and interaction.
 /// Only writes components when values actually change to avoid spurious
 /// change-detection signals every frame.
 fn update_action_visual(
@@ -507,25 +466,7 @@ fn update_action_visual(
         (&Interaction, &mut BorderColor, &mut BackgroundColor),
         With<ActionButton>,
     >,
-    mut cycle_query: CycleButtonQuery,
 ) {
-    // Update cycle button pressed alpha
-    for (interaction, mut border, mut bg) in &mut cycle_query {
-        let alpha = if *interaction == Interaction::Pressed {
-            SURFACE_PRESSED_ALPHA
-        } else {
-            SURFACE_ALPHA
-        };
-        let new_bg = BackgroundColor(Color::srgba(0.5, 0.5, 1.0, alpha * 0.5));
-        let new_border = BorderColor::all(Color::srgba(1.0, 1.0, 1.0, alpha));
-        if *bg != new_bg {
-            *bg = new_bg;
-        }
-        if *border != new_border {
-            *border = new_border;
-        }
-    }
-
     // Green border when the selected mode is active, dim when not
     let selected_is_active = registry
         .modes

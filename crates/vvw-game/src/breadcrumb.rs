@@ -162,11 +162,13 @@ fn register_breadcrumb_modes(mut registry: ResMut<ModeRegistry>) {
         id: ModeId(LAY_TRAIL_MODE_ID.into()),
         label: "Lay Trail".into(),
         suppresses_movement: false,
+        order: 100,
     });
     registry.register(ModeDescriptor {
         id: ModeId(WALK_TRAIL_MODE_ID.into()),
         label: "Walk Trail".into(),
         suppresses_movement: true,
+        order: 101,
     });
 }
 

@@ -18,6 +18,7 @@ mod camera;
 mod maze;
 pub mod mazegen;
 mod modes;
+pub mod mute;
 pub mod pipe;
 mod player;
 mod sound_visuals;
@@ -35,6 +36,7 @@ pub use modes::{
     ActiveMode, InteractionModesPlugin, MockFeature1Plugin, MockFeature2Plugin, ModeId,
     ModeRegistry,
 };
+pub use mute::{MUTE_MODE_ID, MutePlugin};
 pub use pipe::{PipePlaced, PipeSpeaker, SoundPipePlugin};
 pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};
 pub use sound_visuals::SoundVisualsEnabled;
@@ -63,6 +65,7 @@ impl Plugin for VvwGamePlugin {
             touch::TouchControlsPlugin,
             sound_visuals::SoundVisualsPlugin,
             InteractionModesPlugin,
+            MutePlugin,
         ));
     }
 }

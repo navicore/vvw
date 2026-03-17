@@ -15,4 +15,7 @@ pub struct ModeDescriptor {
     /// When true, player movement is suppressed while this mode is active.
     /// Most modes (piping, sculpting, recording) allow normal movement.
     pub suppresses_movement: bool,
+    /// Sort order in the control surface. Lower values appear first.
+    #[serde(default)]
+    pub order: u32,
 }
