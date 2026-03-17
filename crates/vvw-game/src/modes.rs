@@ -198,9 +198,8 @@ fn handle_cycle_gesture(
     mut tap_state: ResMut<TwoFingerTapState>,
     mut visible: ResMut<ControlSurfaceVisible>,
     mut selected: ResMut<SelectedModeIndex>,
-    active: Res<ActiveMode>,
+    mut active: ResMut<ActiveMode>,
     mut label_query: Query<&mut Text, With<ModeLabelText>>,
-    mut commands: Commands,
 ) {
     let triggered = keyboard.just_pressed(KeyCode::Tab)
         || detect_two_finger_tap(&touches, &time, &mut tap_state);
@@ -230,7 +229,7 @@ fn handle_cycle_gesture(
         // Past last mode — hide and deactivate
         visible.0 = false;
         if active.0.is_some() {
-            commands.insert_resource(ActiveMode(None));
+            active.0 = None;
         }
     }
 }
