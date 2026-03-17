@@ -42,6 +42,9 @@ pub struct AlbumMetadata {
     /// Enable sound piping — route audio from distant tracks to new locations
     #[serde(default)]
     pub sound_piping: bool,
+    /// Enable breadcrumb recording and replay
+    #[serde(default)]
+    pub breadcrumbs: bool,
 }
 
 /// Per-track metadata for web publishing
@@ -166,6 +169,7 @@ mod tests {
                 mock_feature1: false,
                 mock_feature2: false,
                 sound_piping: false,
+                breadcrumbs: false,
             },
         };
 

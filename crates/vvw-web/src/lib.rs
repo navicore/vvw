@@ -20,9 +20,9 @@ use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use vvw_game::{
-    Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, PipePlaced, PipeSpeaker,
-    SoundPipePlugin, SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon,
-    TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
+    BreadcrumbPlugin, Maze, MazeTile, MockFeature1Plugin, MockFeature2Plugin, PipePlaced,
+    PipeSpeaker, SoundPipePlugin, SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState,
+    TrackIcon, TrackIdCounter, VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -159,6 +159,9 @@ async fn run() -> Result<(), JsValue> {
     }
     if loaded.manifest.album.mock_feature2 {
         app.add_plugins(MockFeature2Plugin);
+    }
+    if loaded.manifest.album.breadcrumbs {
+        app.add_plugins(BreadcrumbPlugin);
     }
     if loaded.manifest.album.sound_piping {
         app.add_plugins(SoundPipePlugin);

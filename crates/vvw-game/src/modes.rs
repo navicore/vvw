@@ -367,7 +367,14 @@ fn spawn_control_surface(mut commands: Commands, registry: Res<ModeRegistry>) {
         ))
         .id();
 
-    // Mode label
+    // Mode label — fixed-width container prevents layout shift when label changes
+    let label_container = commands
+        .spawn(Node {
+            min_width: Val::Px(80.0),
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .id();
     let label = commands
         .spawn((
             ModeLabelText,
@@ -379,7 +386,8 @@ fn spawn_control_surface(mut commands: Commands, registry: Res<ModeRegistry>) {
             TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
         ))
         .id();
-    commands.entity(container).add_child(label);
+    commands.entity(label_container).add_child(label);
+    commands.entity(container).add_child(label_container);
 
     // Cycle button — only when 2+ modes registered
     if registry.modes.len() > 1 {
