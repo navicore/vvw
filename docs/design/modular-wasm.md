@@ -1,144 +1,112 @@
-# Modular WASM — Crate Design vs. Compiled Artifact
+# Modular WASM — Runtime Module Loading
 
 ## Intent
 
-The WASM binary is 21 MiB today and growing. Adding 3D rendering could push it past Cloudflare's 25 MiB per-file limit. But the size question is really a design question: how do we think about modularity — by crate (how we reason about the system) versus by compiled artifact (what ships to the browser)?
+The WASM binary is 21 MiB today. Adding 3D rendering could push it past Cloudflare Pages' 25 MiB per-file limit. We need to load a second WASM module at runtime from within a running Bevy app — not compile-time feature flags (those produce one monolithic binary), but two separate `.wasm` files where the second is fetched on demand.
 
-Good crate boundaries help us think. Good artifact boundaries help us ship. They don't have to be the same.
+This must be validated before committing to 3D work.
 
-## Current State
+## The Problem
 
-**Crate graph (reasoning boundaries):**
-```
-vvw-core          ← types, no rendering, no bevy (optional)
-vvw-light         ← 2D lighting plugin
-vvw-game          ← ECS plugins: audio, physics, modes, pipes, breadcrumbs, mute
-vvw-web           ← WASM entry point, Web Audio, DOM overlay
-vvw-deploy        ← CLI, native-only, never in WASM
-```
+Rust compiles to a single WASM binary via wasm-bindgen + trunk. There's no dynamic linking, no `dlopen`, no way to add code after the module is instantiated. Bevy's ECS, renderer, and asset server are all statically linked. You can't load a Bevy plugin from a separate `.wasm` file.
 
-**Compiled artifact (shipping boundary):**
-```
-vvw_web_bg.wasm   ← single monolithic binary, everything linked
-```
+Browsers fully support loading multiple WASM modules on the same page — `WebAssembly.instantiateStreaming()` works for any number of modules on the same origin. The constraint is Rust/Bevy, not the browser.
 
-The crate structure is good for reasoning — `vvw-core` is platform-free, `vvw-game` is render-agnostic, `vvw-web` is the platform layer. But it all compiles into one file. Every album ships every feature whether it uses them or not.
+## Approaches
 
-## Two Axes of Modularity
+### A. Two Bevy apps with state handoff
 
-### 1. Modularity by crate (design-time)
+Build two separate WASM binaries from two crate targets:
 
-This is what we have. Crates enforce dependency direction and separation of concerns. Adding a new crate (e.g. `vvw-3d` for 3D rendering) helps us reason about what depends on what, even if it compiles into the same binary.
+- `vvw-web` (21 MiB) — the current 2D player
+- `vvw-web-3d` (24 MiB) — 3D-enabled player with `bevy/3d_bevy_render`
 
-**What this buys us:**
-- Clear ownership: `vvw-light` doesn't know about `vvw-game`
-- Testability: `vvw-core` tests run without Bevy
-- Compile-time feature gates: `vvw-web` could optionally depend on `vvw-3d`
+When the player triggers a 3D morph:
 
-**What this doesn't solve:**
-- Binary size — unused code is only eliminated by LTO dead code removal, which is imperfect
-- Load time — browser downloads everything upfront
+1. The running 2D app serializes game state (player position, heading, active modes, pipe placements, mute state, maze mutations) to a JS-accessible buffer
+2. JS tears down the 2D WASM module
+3. JS fetches and instantiates `vvw-web-3d`
+4. The 3D app deserializes state and resumes
 
-### 2. Modularity by artifact (deploy-time)
+**What needs to survive the swap:**
+- `AudioContext` and `<audio>` elements — owned by JS, not WASM. They survive if we don't destroy them. The new WASM module reconnects via `createMediaElementSource()`.
+- Canvas — same `<canvas>` element, new Bevy app takes it over.
+- Game state — serialized via `serde` through `wasm-bindgen`. `vvw-core` types are already `Serialize`/`Deserialize`.
 
-Split the WASM output into multiple files that load independently. The browser fetches the base player immediately and loads extensions on demand.
+**What breaks:**
+- Bevy's ECS is gone. All entities, components, resources rebuilt from serialized state.
+- Any in-flight audio (gain ramps, streaming state) resets. Brief audio glitch during swap.
+- The swap is not a smooth morph — it's a hard cut with a loading screen.
 
-**Options, from least to most invasive:**
+**Effort:** Medium-high. Two build targets, state serialization contract, JS orchestration layer.
 
-#### A. Cargo feature flags (single binary, conditional compilation)
+### B. WASM module as computation sidecar
 
-```toml
-[features]
-default = []
-render-3d = ["bevy/3d_bevy_render"]
-```
+Keep the main Bevy app running. Load a second WASM module that does 3D mesh generation as a pure computation — it takes maze data in, returns vertex buffers out. The main app creates Bevy meshes from those buffers.
 
-`vvw-deploy` builds different WASM binaries per album based on `project.ron` flags. An album with `morph_3d: true` gets the 3D-enabled build. Albums without it get the smaller binary.
+- Second module is small (no Bevy, no ECS, just geometry math)
+- Main module stays under 25 MiB
+- No state handoff — main app stays alive
+- 3D rendering still needs `bevy/3d_bevy_render` in the main binary
 
-- **Pros:** No runtime complexity. Each album gets exactly the code it needs. Trunk and wasm-bindgen work as-is.
-- **Cons:** Multiple builds per deploy. CI matrix grows. Two albums on the same Pages site can't share a single WASM file if they need different features.
-- **Size impact:** Each binary is smaller than a monolith with everything. 3D-enabled build might be 23-24 MiB; 2D-only stays at 21 MiB.
+**Problem:** This doesn't solve the size constraint. The 3D renderer is in Bevy, not in the sidecar. The sidecar only helps if the heavy code is custom (e.g., a large procedural generation library), not if it's Bevy's built-in 3D pipeline.
 
-#### B. Per-album WASM builds (multiple binaries, same site)
+### C. Web Worker with OffscreenCanvas
 
-Extend option A: each album subdirectory gets its own WASM binary instead of sharing one from the site root.
+Run the 3D Bevy app in a Web Worker with `OffscreenCanvas`. The main thread keeps the 2D app or just handles audio/UI. The worker loads its own WASM module.
 
-```
-deploy/
-├── AlbumA/
-│   ├── index.html
-│   ├── project.ron
-│   ├── vvw_web_bg.wasm    ← 2D-only, 21 MiB
-│   └── vvw_web.js
-├── AlbumB/
-│   ├── index.html
-│   ├── project.ron
-│   ├── vvw_web_bg.wasm    ← 3D-enabled, 24 MiB
-│   └── vvw_web.js
-```
+- Each WASM module is under 25 MiB independently
+- No state serialization needed if they communicate via `postMessage`
+- `OffscreenCanvas` support: Chrome/Edge yes, Safari 16.4+, Firefox yes
 
-- **Pros:** Each album is self-contained. Feature set matches the album. No sharing conflicts.
-- **Cons:** Duplicated WASM across albums (browser cache helps if filenames match). Build time multiplies. Total site size grows (but Cloudflare Pages limit is per-file, not per-site).
-- **Current deploy already supports this:** `assemble` copies WASM to the root, but moving it per-album is a small change to `assemble.rs` + the HTML template's script path.
+**Problem:** Bevy doesn't support `OffscreenCanvas` yet. The Bevy WASM renderer assumes it owns the main thread's canvas. This is a Bevy upstream issue, not something we can work around easily.
 
-#### C. Lazy-loaded second WASM module (two binaries, runtime handoff)
+### D. Don't use Cloudflare Pages for WASM hosting
 
-Base player loads as 2D-only. When the player triggers a 3D morph, JS fetches and instantiates a second WASM module containing the 3D-enabled Bevy app. Game state serializes across the boundary.
+Host the WASM binary on R2 (no file size limit) and load it via `fetch()` + `WebAssembly.instantiateStreaming()` from a custom JS loader. The HTML page on Cloudflare Pages is tiny; it just bootstraps the WASM from R2.
 
-- **Pros:** Base load stays at 21 MiB. 3D code only downloaded when needed. No per-file size limit issue.
-- **Cons:** Two full Bevy apps. State serialization is fragile (player position, audio state, maze mutations, active modes, pipe placements). AudioContext and canvas must survive the swap. Significant engineering effort.
-- **Browser security:** Not an issue. Multiple WASM modules on the same origin are fully supported. Each is fetched and instantiated independently via `WebAssembly.instantiateStreaming()`.
+- No 25 MiB constraint at all
+- Single monolithic binary, no splitting needed
+- R2 is already set up for audio streaming
+- Custom loader replaces trunk's generated JS (moderate effort)
 
-#### D. WASM component model (future)
+## Proof of Concept — What to Build
 
-The WASM component model (wasm-tools, wit-bindgen) enables true module linking — shared memory, typed interfaces between modules. Rust support is maturing but not production-ready for Bevy-scale apps. Worth tracking but not viable today.
+To validate that runtime WASM module loading works in this project, build the simplest possible version of approach A:
+
+### Spike: load a second WASM module from JS and call into the running app
+
+1. Create a tiny second crate (`crates/vvw-probe`) that compiles to WASM via wasm-bindgen. It exports one function: `probe() -> String` that returns a version string.
+2. Add JS in `index.html` that, on a button click, fetches `vvw_probe_bg.wasm`, instantiates it, and calls `probe()`.
+3. Display the result in the DOM.
+4. Deploy both `.wasm` files to Cloudflare Pages and verify both load.
+
+This proves:
+- Two `.wasm` files on the same page, same origin
+- Lazy loading (second module fetched on demand, not at page load)
+- Both files under 25 MiB individually
+- wasm-bindgen works for both modules independently
+- The deploy pipeline can handle multiple WASM artifacts
+
+It does NOT prove state handoff, canvas sharing, or AudioContext survival — those are approach A concerns for a later spike if the basic loading works.
+
+### Alternative spike: host WASM on R2 (approach D)
+
+1. Upload the existing `vvw_web_bg.wasm` to R2 alongside audio files
+2. Replace trunk's JS loader with a custom `<script>` that fetches WASM from R2
+3. Deploy the HTML-only site to Pages, verify the app loads WASM from R2
+
+This proves the size constraint is irrelevant and avoids the two-module complexity entirely.
 
 ## Recommendation
 
-**Start with A (feature flags), graduate to B (per-album builds) if needed.**
+**Try approach D first.** If we can serve WASM from R2, the 25 MiB limit disappears and we never need to split modules. The WASM binary is already content-hashed; R2 has no file size limit; the infrastructure is already in place. One afternoon of work to rewrite the JS loader vs. weeks of work for state serialization.
 
-Feature flags are the lowest-risk path. They use existing tooling, produce a single binary per build, and let us measure actual size impact before committing to more complex approaches. The `vvw-deploy` CLI already knows each album's feature set from `project.ron` — extending it to select cargo features at build time is natural.
-
-Per-album builds (B) become worthwhile when the feature matrix grows beyond 3D — if sculpting, multiplayer, or other heavy features each add significant WASM weight, per-album builds let each album pay only for what it uses.
-
-Lazy loading (C) is the escape hatch if a single feature genuinely can't fit in 25 MiB alongside the base. Hold it in reserve.
-
-## Changes Needed (for option A)
-
-### vvw-web/Cargo.toml
-```toml
-[features]
-default = []
-render-3d = ["vvw-3d"]
-
-[dependencies]
-vvw-3d = { path = "../vvw-3d", optional = true }
-```
-
-### vvw-web/src/lib.rs
-```rust
-#[cfg(feature = "render-3d")]
-app.add_plugins(vvw_3d::Morph3dPlugin);
-```
-
-### vvw-deploy (build integration)
-- Read `morph_3d` from `project.ron`
-- Pass `--features render-3d` to trunk when building for albums that need it
-- Cache builds by feature set to avoid redundant recompilation
-
-### Justfile
-```
-build-web-3d:
-    trunk build --release --features render-3d
-```
-
-## Domain Events
-
-No new domain events. This is a build/deploy concern, not a runtime concern. The feature flag gates plugin registration at app startup — once running, the app doesn't know or care whether it was built with optional features.
+If R2 hosting doesn't work (CORS, latency, caching issues), fall back to the two-module spike (approach A).
 
 ## Checkpoints
 
-- [ ] Add `render-3d` feature flag to `vvw-web` — verify 2D-only build produces identical binary to today
-- [ ] Build with `--features render-3d` — measure WASM size delta
-- [ ] Per-album build path in `vvw-deploy` — verify correct features selected from `project.ron`
-- [ ] Two albums on same site with different feature sets — verify both load correctly
+- [ ] Upload existing WASM to R2, load from custom JS — does the app start?
+- [ ] Measure load time delta (R2 vs Pages for WASM delivery)
+- [ ] If R2 works: update deploy pipeline, close the modular WASM question
+- [ ] If R2 fails: build the two-crate spike, validate lazy loading on Pages

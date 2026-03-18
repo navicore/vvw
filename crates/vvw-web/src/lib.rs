@@ -132,13 +132,10 @@ async fn run() -> Result<(), JsValue> {
     let maze = loaded.manifest.maze;
     let lighting = loaded.manifest.lighting;
     let physics = loaded.manifest.physics;
-    let sound_visuals = SoundVisualsEnabled(loaded.manifest.album.sound_visuals);
-
     let mut app = App::new();
     app.insert_resource(maze)
         .insert_resource(lighting)
         .insert_resource(physics)
-        .insert_resource(sound_visuals)
         .insert_resource(TrackIdCounter(next_id))
         .insert_resource(AudioActivationFlag(activation_flag))
         .init_resource::<CurrentTrackInfo>()
@@ -154,6 +151,9 @@ async fn run() -> Result<(), JsValue> {
             ..default()
         }))
         .add_plugins(VvwGamePlugin);
+
+    let sound_visuals = SoundVisualsEnabled(loaded.manifest.album.sound_visuals);
+    app.insert_resource(sound_visuals);
 
     if loaded.manifest.album.mock_feature1 {
         app.add_plugins(MockFeature1Plugin);

@@ -26,7 +26,7 @@ The 2D maze works as a mixing instrument because spatial relationships (distance
 
 ### Hard constraints
 
-- **WASM size**: currently 21 MiB after aggressive optimization. Adding `3d_bevy_render` adds ~2-4 MiB (3D shaders, mesh allocators, depth buffers). Cloudflare Pages has a 25 MiB limit. This is tight. Would likely need to be a compile-time feature flag — albums opt into 3D, and only those builds include the 3D renderer.
+- **WASM size**: Measured. Enabling `3d_bevy_render` increases WASM from 21 MiB to 24.2 MiB (25,379,670 bytes) — under the 25 MiB Cloudflare Pages limit (26,214,400 bytes) with ~800 KiB to spare. No binary splitting or alternate hosting needed.
 - **No 3D asset pipeline**: procedural geometry only (extruded walls, flat floors). This is actually a strength — keeps the CLI-deploy workflow intact.
 
 ## Constraints (if we proceed)
@@ -34,7 +34,7 @@ The 2D maze works as a mixing instrument because spatial relationships (distance
 - **Same mixing rules.** Gain, panning, LOS, and distance curves must produce identical audio output in both modes for the same player position.
 - **No 3D physics.** Movement stays on the XY plane. Avian2d is not replaced.
 - **No 3D model assets.** Geometry is procedural from the `Maze` grid. No .gltf files. Textures limited to album artwork (already hosted on R2) applied to wall and track cube surfaces.
-- **Feature-gated.** 3D rendering is a compile-time feature. Albums that don't use it pay zero WASM cost.
+- **Always included.** 3D rendering ships in the single binary (no feature gating needed — it fits).
 - **Out of scope:** vertical maze levels, jumping, 3D spatial audio (HRTF), VR/AR, multiplayer.
 
 ## Approach (sketch)
@@ -79,7 +79,7 @@ No new audio events — `TrackAudioState` is unchanged across modes.
 
 ## Checkpoints (if implemented)
 
-- [ ] `3d_bevy_render` feature flag compiles and WASM stays under 25 MiB
+- [x] `3d_bevy_render` compiles and WASM stays under 25 MiB (24.2 MiB measured)
 - [ ] Procedural wall/floor meshes match tile grid positions exactly
 - [ ] Camera morph animation is smooth (no pop, no z-fighting)
 - [ ] Audio output is identical in 2D and 3D modes for same player position
