@@ -12,6 +12,7 @@ use vvw_light::{LightOccluder2d, LightOccluderGrid, LightingConfig, PointLight2d
 pub use vvw_core::maze::Maze;
 
 use crate::audio::TrackAudioState;
+use crate::morph3d::Mesh3dTile;
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
 /// Marker component for maze tiles (for cleanup)
@@ -153,9 +154,10 @@ fn sync_occluder_grid(maze: Res<Maze>, mut grid: ResMut<LightOccluderGrid>) {
 }
 
 /// Filter for entities that should be despawned on maze re-render.
-type MazeEntityFilter = Or<(With<MazeTile>, With<TrackIcon>)>;
+type MazeEntityFilter = Or<(With<MazeTile>, With<TrackIcon>, With<Mesh3dTile>)>;
 
 /// On `MazeChanged`, despawn all maze tiles and track icons, then re-render
+#[allow(clippy::too_many_arguments)]
 fn respawn_maze_tiles(
     mut commands: Commands,
     mut events: MessageReader<MazeChanged>,
@@ -163,6 +165,8 @@ fn respawn_maze_tiles(
     maze: Res<Maze>,
     lighting: Res<LightingConfig>,
     physics: Res<PhysicsConfig>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // Only process if there are MazeChanged events
     let mut changed = false;
@@ -173,11 +177,12 @@ fn respawn_maze_tiles(
         return;
     }
 
-    // Despawn old tiles (Bevy 0.18 despawn() handles children automatically)
+    // Despawn old tiles including 3D meshes
     for entity in &old_entities {
         commands.entity(entity).despawn();
     }
 
-    // Spawn fresh tiles from current maze
+    // Spawn fresh 2D tiles and 3D meshes from current maze
     spawn_maze_tiles(&mut commands, &maze, &lighting, &physics);
+    crate::morph3d::spawn_3d_meshes_from_maze(&mut commands, &maze, &mut meshes, &mut materials);
 }
