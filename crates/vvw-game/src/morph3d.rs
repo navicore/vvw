@@ -69,10 +69,10 @@ struct ThreeFingerTapState {
     cooldown_until: f64,
 }
 
-/// Wall height in world units.
-const WALL_HEIGHT: f32 = TILE_SIZE;
+/// Wall height — shorter than eye height so the player looks over walls (cubicle effect).
+const WALL_HEIGHT: f32 = TILE_SIZE * 0.3;
 
-/// Camera eye height (fraction of tile size).
+/// Camera eye height — above wall tops for an over-the-cubicle perspective.
 const EYE_HEIGHT: f32 = TILE_SIZE * 0.4;
 
 pub struct Morph3dPlugin;

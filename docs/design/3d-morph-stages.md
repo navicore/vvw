@@ -44,26 +44,36 @@ Implement the 3D morph mode from `3d-morph-mode.md` in stages that are individua
 **Goal:** Player can trigger the morph. 2D sprites hide, 3D meshes show, camera switches.
 
 - Add `morph_3d: bool` to `AlbumMetadata` (`#[serde(default)]`, default false)
-- Register "3D" mode in `ModeRegistry` (order: 50, between Mute and breadcrumbs), only when `morph_3d: true`
-- When mode activates:
-  - Set `Morph3dActive(true)`
-  - Hide all `MazeTile` sprites (`Visibility::Hidden`)
-  - Show all `Mesh3dTile` meshes (`Visibility::Inherited`)
-  - Deactivate `Camera2d`, activate `Camera3d`
+- `V` key (desktop) / three-finger tap (mobile) toggles between 2D and 3D — independent of mode framework, so modes (Mute, Pipe, Breadcrumbs) work in both views
+- `Morph3dEnabled` resource gates the toggle listener; `Morph3dActive` tracks current state
+- When toggling to 3D:
+  - Hide all `MazeTile` sprites, show all `Mesh3dTile` meshes
+  - Deactivate `Camera2d`, activate `Camera3d`, swap `IsDefaultUiCamera`
   - Hide vvw-light lightmap overlay
-  - Enable 3D `PointLight` and `SpotLight`
-- When mode deactivates: reverse all of the above
-- Input: in 3D mode, WASD/D-pad drives heading rotation + forward/back impulse instead of cardinal movement
+  - Show 3D `PointLight` and `SpotLight`
+  - Force heading-relative controls (both keyboard and D-pad)
+- When toggling to 2D: reverse all of the above
+- Cubicle-height walls (`TILE_SIZE * 0.3`) — player looks over walls, track cubes visible as landmarks
 
-**Checkpoint:** Toggle morph via control surface. Audio identical in both modes. Walk through 3D corridors. Revert to 2D cleanly.
+**Checkpoint:** Toggle via V key. Audio identical in both views. Walk through 3D cubicle maze. All modes work in both views. Revert to 2D cleanly.
 
 ### Stage 4 — Polish (post-merge, iterative)
 
+**Lighting** (priority — 3D scene is too dark with cubicle walls):
+- Add `AmbientLight` for global baseline brightness
+- Tune `PointLight` intensity/range at track positions for the cubicle scale
+- Tune `SpotLight` on player (flashlight feel at eye level)
+- Consider directional overhead light for even illumination
+
+**Visual polish:**
 - Camera morph animation (smooth transition over ~1s instead of hard swap)
 - Artwork on wall surfaces (album background texture)
 - Track artwork on track cubes
-- Tune 3D lighting (intensity, shadows, ambient)
-- First-person vs third-person camera option
+- Configurable wall height via `project.ron` (currently hardcoded cubicle-height)
+
+**Exploration:**
+- Third-person camera option (offset behind player)
+- 3D representations of pipes and breadcrumb dots
 
 ## Constraints
 
@@ -74,4 +84,4 @@ Implement the 3D morph mode from `3d-morph-mode.md` in stages that are individua
 
 ## Domain Events
 
-No new messages or events in stages 1–2. Stage 3 reuses `ActiveMode` from the interaction modes framework — no new event types needed.
+No new messages or events. The 3D toggle writes `Morph3dActive` directly — no mode framework involvement, no new event types.
