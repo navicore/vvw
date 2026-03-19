@@ -328,7 +328,8 @@ fn detect_three_finger_tap(
     }
 
     if state.tracking && count >= 3 {
-        // Still holding — update positions and check movement
+        // Still holding — update positions and check movement.
+        // Cancel if any tracked finger disappeared (finger swap).
         for (i, id) in state.start_ids.iter().enumerate() {
             if let Some(touch) = touches.get_pressed(*id) {
                 state.last_positions[i] = touch.position();
@@ -336,6 +337,10 @@ fn detect_three_finger_tap(
                     state.tracking = false;
                     return false;
                 }
+            } else {
+                state.tracking = false;
+                state.cancelled = true;
+                return false;
             }
         }
         if now - state.start_time > TAP3_MAX_DURATION {
