@@ -44,7 +44,12 @@ impl Plugin for CameraPlugin {
 
 fn spawn_camera(mut commands: Commands) {
     commands.insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.1)));
-    commands.spawn((Camera2d, GameCamera, Transform::default()));
+    commands.spawn((
+        Camera2d,
+        GameCamera,
+        IsDefaultUiCamera,
+        Transform::default(),
+    ));
 }
 
 fn update_camera(

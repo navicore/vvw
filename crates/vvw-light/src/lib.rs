@@ -17,4 +17,4 @@ mod render;
 pub use components::{
     AmbientLight2d, LightOccluder2d, LightOccluderGrid, LightingConfig, PointLight2d,
 };
-pub use render::Lighting2dPlugin;
+pub use render::{LightMapOverlay, Lighting2dPlugin};

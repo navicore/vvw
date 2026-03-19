@@ -21,9 +21,9 @@ use wasm_bindgen::prelude::*;
 
 use vvw_game::{
     ActiveMode, BreadcrumbPlugin, MUTE_MODE_ID, Maze, MazeTile, MockFeature1Plugin,
-    MockFeature2Plugin, PipePlaced, PipeSpeaker, SoundPipePlugin, SoundVisualsEnabled,
-    SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter, VvwGamePlugin,
-    spawn_maze_tiles,
+    MockFeature2Plugin, Morph3dEnabled, PipePlaced, PipeSpeaker, SoundPipePlugin,
+    SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter,
+    VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -149,8 +149,14 @@ async fn run() -> Result<(), JsValue> {
                 ..default()
             }),
             ..default()
-        }))
-        .add_plugins(VvwGamePlugin);
+        }));
+
+    // Insert Morph3dEnabled before VvwGamePlugin so init_resource won't overwrite it
+    if loaded.manifest.album.morph_3d {
+        app.insert_resource(Morph3dEnabled(true));
+    }
+
+    app.add_plugins(VvwGamePlugin);
 
     let sound_visuals = SoundVisualsEnabled(loaded.manifest.album.sound_visuals);
     app.insert_resource(sound_visuals);

@@ -45,6 +45,9 @@ pub struct AlbumMetadata {
     /// Enable breadcrumb recording and replay
     #[serde(default)]
     pub breadcrumbs: bool,
+    /// Enable 3D morph mode — player can switch between 2D top-down and 3D first-person
+    #[serde(default)]
+    pub morph_3d: bool,
 }
 
 /// Per-track metadata for web publishing
@@ -170,6 +173,7 @@ mod tests {
                 mock_feature2: false,
                 sound_piping: false,
                 breadcrumbs: false,
+                morph_3d: false,
             },
         };
 
