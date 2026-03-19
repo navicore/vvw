@@ -95,7 +95,9 @@ impl Plugin for Morph3dPlugin {
             )
             .add_systems(
                 Update,
-                follow_player_3d.run_if(|active: Res<Morph3dActive>| active.0),
+                follow_player_3d
+                    .run_if(|active: Res<Morph3dActive>| active.0)
+                    .after(toggle_3d_view),
             );
     }
 }
@@ -298,8 +300,14 @@ fn detect_three_finger_tap(
         return false;
     }
 
-    if count >= 3 && !state.tracking {
-        // Three or more fingers appeared — start tracking
+    // 4+ fingers without tracking — reject immediately
+    if count > 3 && !state.tracking {
+        state.cancelled = true;
+        return false;
+    }
+
+    if count == 3 && !state.tracking {
+        // Exactly three fingers appeared — start tracking
         let mut iter = touches.iter();
         let f0 = iter.next().unwrap();
         let f1 = iter.next().unwrap();
