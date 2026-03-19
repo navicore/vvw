@@ -312,7 +312,7 @@ fn detect_three_finger_tap(
         return false;
     }
 
-    if state.tracking && count > 4 {
+    if state.tracking && count > 3 {
         // Too many fingers — cancel
         state.tracking = false;
         state.cancelled = true;

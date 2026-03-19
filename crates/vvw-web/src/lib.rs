@@ -149,8 +149,14 @@ async fn run() -> Result<(), JsValue> {
                 ..default()
             }),
             ..default()
-        }))
-        .add_plugins(VvwGamePlugin);
+        }));
+
+    // Insert Morph3dEnabled before VvwGamePlugin so init_resource won't overwrite it
+    if loaded.manifest.album.morph_3d {
+        app.insert_resource(Morph3dEnabled(true));
+    }
+
+    app.add_plugins(VvwGamePlugin);
 
     let sound_visuals = SoundVisualsEnabled(loaded.manifest.album.sound_visuals);
     app.insert_resource(sound_visuals);
@@ -163,9 +169,6 @@ async fn run() -> Result<(), JsValue> {
     }
     if loaded.manifest.album.breadcrumbs {
         app.add_plugins(BreadcrumbPlugin);
-    }
-    if loaded.manifest.album.morph_3d {
-        app.insert_resource(Morph3dEnabled(true));
     }
     if loaded.manifest.album.sound_piping {
         app.add_plugins(SoundPipePlugin);
