@@ -39,7 +39,9 @@ pub struct TrackLight3d;
 pub struct Morph3dActive(pub bool);
 
 /// Whether the 3D view toggle is enabled for this album.
-#[derive(Resource)]
+/// Defaults to false; platform layer inserts `Morph3dEnabled(true)` when
+/// `morph_3d: true` in album config.
+#[derive(Resource, Default)]
 pub struct Morph3dEnabled(pub bool);
 
 // ── Three-finger tap detection ─────────────────────────────────────────────
@@ -78,15 +80,22 @@ pub struct Morph3dPlugin;
 impl Plugin for Morph3dPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Morph3dActive>()
-            .insert_resource(Morph3dEnabled(false))
+            .init_resource::<Morph3dEnabled>()
             .init_resource::<ThreeFingerTapState>()
-            .add_systems(PostStartup, (setup_3d_meshes, setup_3d_camera_and_lights))
+            .add_systems(
+                PostStartup,
+                (setup_3d_meshes, setup_3d_camera_and_lights)
+                    .run_if(|enabled: Res<Morph3dEnabled>| enabled.0),
+            )
             .add_systems(
                 Update,
                 (
-                    toggle_3d_view.run_if(|enabled: Res<Morph3dEnabled>| enabled.0),
+                    toggle_3d_view
+                        .run_if(|enabled: Res<Morph3dEnabled>| enabled.0)
+                        .before(crate::player::handle_player_input),
                     follow_player_3d.run_if(|active: Res<Morph3dActive>| active.0),
-                ),
+                )
+                    .chain(),
             );
     }
 }
@@ -420,17 +429,14 @@ pub fn spawn_3d_meshes_from_maze(
 
     let wall_mat = materials.add(StandardMaterial {
         base_color: colors::WALL,
-        unlit: true,
         ..default()
     });
     let floor_mat = materials.add(StandardMaterial {
         base_color: colors::FLOOR,
-        unlit: true,
         ..default()
     });
     let icon_mat = materials.add(StandardMaterial {
         base_color: colors::TRACK_ICON,
-        unlit: true,
         ..default()
     });
 

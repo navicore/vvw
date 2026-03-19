@@ -189,7 +189,7 @@ pub fn handle_player_input(
                 heading.0 = Vec2::from_angle(angle).rotate(heading.0);
             }
             // Prevent float drift from accumulating over long sessions
-            heading.0 = heading.0.normalize_or_zero();
+            heading.0 = heading.0.normalize_or(Vec2::Y);
 
             let mut forward = 0.0;
             if action_state.pressed(&PlayerAction::Up) {
