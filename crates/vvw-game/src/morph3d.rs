@@ -1,18 +1,19 @@
-//! 3D morph mode — switch between 2D top-down and 3D first-person view
+//! 3D view toggle — switch between 2D top-down and 3D first-person view
 //!
-//! **Stage 1**: Wall boxes, floor quads, track cubes — all `Visibility::Hidden`.
-//! **Stage 2**: `Camera3d` (inactive), `PointLight` at tracks, `SpotLight` on player.
-//! **Stage 3**: Mode registration, activation/deactivation, visibility + camera swap.
+//! The view toggle is independent of the interaction mode framework. Modes
+//! (Mute, Pipe, Breadcrumbs) work identically in both views. Toggle via
+//! `V` key (desktop) or three-finger tap (mobile).
+//!
+//! Enabled per-album via `morph_3d: true` in `project.ron`.
 
+use bevy::input::touch::Touches;
 use bevy::prelude::*;
 
 use vvw_core::maze::Maze;
-use vvw_core::modes::{ModeDescriptor, ModeId};
 use vvw_light::LightMapOverlay;
 
 use crate::camera::GameCamera;
 use crate::maze::{MazeTile, colors};
-use crate::modes::{ActiveMode, ModeRegistry};
 use crate::player::{Player, PlayerHeading};
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
@@ -32,11 +33,14 @@ pub struct PlayerSpotlight3d;
 #[derive(Component)]
 pub struct TrackLight3d;
 
-/// Whether the 3D morph is currently active.
+/// Whether the 3D view is currently active. Checked by player input
+/// (heading-relative controls) and the follow-camera system.
 #[derive(Resource, Default)]
 pub struct Morph3dActive(pub bool);
 
-const MORPH_3D_MODE_ID: &str = "morph_3d";
+/// Whether the 3D view toggle is enabled for this album.
+#[derive(Resource)]
+pub struct Morph3dEnabled(pub bool);
 
 /// Wall height in world units.
 const WALL_HEIGHT: f32 = TILE_SIZE;
@@ -49,26 +53,16 @@ pub struct Morph3dPlugin;
 impl Plugin for Morph3dPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Morph3dActive>()
+            .insert_resource(Morph3dEnabled(false))
             .add_systems(PostStartup, (setup_3d_meshes, setup_3d_camera_and_lights))
             .add_systems(
                 Update,
                 (
-                    watch_morph_mode.run_if(resource_changed::<ActiveMode>),
+                    toggle_3d_view.run_if(|enabled: Res<Morph3dEnabled>| enabled.0),
                     follow_player_3d.run_if(|active: Res<Morph3dActive>| active.0),
                 ),
             );
     }
-}
-
-/// Conditionally register the 3D mode. Called by the platform layer
-/// when `morph_3d: true` in album config.
-pub fn register_morph_3d_mode(registry: &mut ModeRegistry) {
-    registry.register(ModeDescriptor {
-        id: ModeId(MORPH_3D_MODE_ID.into()),
-        label: "3D".into(),
-        suppresses_movement: false,
-        order: 50,
-    });
 }
 
 // ── Startup ────────────────────────────────────────────────────────────────
@@ -87,9 +81,6 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
     let world = start_pos.to_world();
     let cam_pos = Vec3::new(world.x, EYE_HEIGHT, -world.y);
 
-    // Camera3d renders below Camera2d (order -1 < 0).
-    // Camera2d stays active always so Bevy UI keeps rendering.
-    // When 3D is active, 2D sprites are hidden so Camera2d only sees UI.
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -133,15 +124,16 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
     ));
 }
 
-// ── Mode activation ────────────────────────────────────────────────────────
+// ── View toggle ────────────────────────────────────────────────────────────
 
-/// Use a `SystemParam` to bundle the many queries needed for morph toggling.
+/// Use a `SystemParam` to bundle the many queries needed for view toggling.
 #[derive(bevy::ecs::system::SystemParam)]
 #[allow(clippy::type_complexity)]
 struct MorphQueries<'w, 's> {
     tiles: Query<'w, 's, &'static mut Visibility, (With<MazeTile>, Without<Mesh3dTile>)>,
     meshes: Query<'w, 's, &'static mut Visibility, (With<Mesh3dTile>, Without<MazeTile>)>,
-    cam3d: Query<'w, 's, &'static mut Camera, (With<GameCamera3d>, Without<GameCamera>)>,
+    cam2d: Query<'w, 's, (Entity, &'static mut Camera), (With<GameCamera>, Without<GameCamera3d>)>,
+    cam3d: Query<'w, 's, (Entity, &'static mut Camera), (With<GameCamera3d>, Without<GameCamera>)>,
     lights3d: Query<
         'w,
         's,
@@ -180,16 +172,21 @@ struct MorphQueries<'w, 's> {
     >,
 }
 
-fn watch_morph_mode(
-    active: Res<ActiveMode>,
+/// Toggle 3D view on `V` key or three-finger tap.
+fn toggle_3d_view(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    touches: Res<Touches>,
     mut morph_active: ResMut<Morph3dActive>,
     mut q: MorphQueries,
+    mut commands: Commands,
 ) {
-    let want_3d = active.0.as_ref().is_some_and(|id| id.0 == MORPH_3D_MODE_ID);
+    let toggled = keyboard.just_pressed(KeyCode::KeyV) || detect_three_finger_tap(&touches);
 
-    if want_3d == morph_active.0 {
+    if !toggled {
         return;
     }
+
+    let want_3d = !morph_active.0;
     morph_active.0 = want_3d;
 
     let (show_2d, show_3d) = if want_3d {
@@ -204,9 +201,21 @@ fn watch_morph_mode(
     for mut vis in &mut q.meshes {
         *vis = show_3d;
     }
-    // Camera2d stays active always (renders UI). Only toggle Camera3d.
-    for mut cam in &mut q.cam3d {
+    for (entity, mut cam) in &mut q.cam2d {
+        cam.is_active = !want_3d;
+        if want_3d {
+            commands.entity(entity).remove::<IsDefaultUiCamera>();
+        } else {
+            commands.entity(entity).insert(IsDefaultUiCamera);
+        }
+    }
+    for (entity, mut cam) in &mut q.cam3d {
         cam.is_active = want_3d;
+        if want_3d {
+            commands.entity(entity).insert(IsDefaultUiCamera);
+        } else {
+            commands.entity(entity).remove::<IsDefaultUiCamera>();
+        }
     }
     for mut vis in &mut q.lights3d {
         *vis = show_3d;
@@ -220,13 +229,20 @@ fn watch_morph_mode(
     }
 
     if want_3d {
-        info!("Morph: switched to 3D");
+        info!("View: switched to 3D");
     } else {
-        info!("Morph: switched to 2D");
+        info!("View: switched to 2D");
     }
 }
 
-// ── Query filters ──────────────────────────────────────────────────────────
+/// Simple three-finger tap detection: all three fingers pressed on the same frame.
+fn detect_three_finger_tap(touches: &Touches) -> bool {
+    let just_pressed: usize = touches.iter_just_pressed().count();
+    let total: usize = touches.iter().count();
+    just_pressed >= 3 && total >= 3
+}
+
+// ── Camera follow ──────────────────────────────────────────────────────────
 
 type CamFilter = (
     With<GameCamera3d>,
@@ -238,8 +254,6 @@ type SpotFilter = (
     Without<Player>,
     Without<GameCamera3d>,
 );
-
-// ── Update ─────────────────────────────────────────────────────────────────
 
 /// Keep the 3D camera and spotlight in sync with the player's 2D position
 /// and heading. Only runs when `Morph3dActive` is true.

@@ -21,9 +21,9 @@ use wasm_bindgen::prelude::*;
 
 use vvw_game::{
     ActiveMode, BreadcrumbPlugin, MUTE_MODE_ID, Maze, MazeTile, MockFeature1Plugin,
-    MockFeature2Plugin, ModeRegistry, PipePlaced, PipeSpeaker, SoundPipePlugin,
+    MockFeature2Plugin, Morph3dEnabled, PipePlaced, PipeSpeaker, SoundPipePlugin,
     SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter,
-    VvwGamePlugin, register_morph_3d_mode, spawn_maze_tiles,
+    VvwGamePlugin, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -165,9 +165,7 @@ async fn run() -> Result<(), JsValue> {
         app.add_plugins(BreadcrumbPlugin);
     }
     if loaded.manifest.album.morph_3d {
-        app.add_systems(Startup, |mut registry: ResMut<ModeRegistry>| {
-            register_morph_3d_mode(&mut registry);
-        });
+        app.insert_resource(Morph3dEnabled(true));
     }
     if loaded.manifest.album.sound_piping {
         app.add_plugins(SoundPipePlugin);
