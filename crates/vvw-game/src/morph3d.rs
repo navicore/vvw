@@ -89,13 +89,13 @@ impl Plugin for Morph3dPlugin {
             )
             .add_systems(
                 Update,
-                (
-                    toggle_3d_view
-                        .run_if(|enabled: Res<Morph3dEnabled>| enabled.0)
-                        .before(crate::player::handle_player_input),
-                    follow_player_3d.run_if(|active: Res<Morph3dActive>| active.0),
-                )
-                    .chain(),
+                toggle_3d_view
+                    .run_if(|enabled: Res<Morph3dEnabled>| enabled.0)
+                    .before(crate::player::handle_player_input),
+            )
+            .add_systems(
+                Update,
+                follow_player_3d.run_if(|active: Res<Morph3dActive>| active.0),
             );
     }
 }
