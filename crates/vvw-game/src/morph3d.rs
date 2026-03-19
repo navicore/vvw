@@ -42,6 +42,31 @@ pub struct Morph3dActive(pub bool);
 #[derive(Resource)]
 pub struct Morph3dEnabled(pub bool);
 
+// ── Three-finger tap detection ─────────────────────────────────────────────
+
+/// Max finger movement (pixels) before we reject as a drag
+const TAP3_MOVE_THRESHOLD: f32 = 50.0;
+/// Max duration (seconds) fingers can be held before we reject
+const TAP3_MAX_DURATION: f64 = 1.5;
+/// Cooldown (seconds) after a successful tap
+const TAP3_COOLDOWN: f64 = 0.8;
+
+/// State machine for detecting three-finger taps.
+///
+/// Arms when 3+ fingers are down. Fires when all fingers lift if
+/// movement was small and duration was short. The two-finger tap
+/// detector cancels itself when 3+ fingers appear, so no conflict.
+#[derive(Resource, Default)]
+struct ThreeFingerTapState {
+    tracking: bool,
+    cancelled: bool,
+    start_positions: [Vec2; 3],
+    start_ids: [u64; 3],
+    last_positions: [Vec2; 3],
+    start_time: f64,
+    cooldown_until: f64,
+}
+
 /// Wall height in world units.
 const WALL_HEIGHT: f32 = TILE_SIZE;
 
@@ -54,6 +79,7 @@ impl Plugin for Morph3dPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Morph3dActive>()
             .insert_resource(Morph3dEnabled(false))
+            .init_resource::<ThreeFingerTapState>()
             .add_systems(PostStartup, (setup_3d_meshes, setup_3d_camera_and_lights))
             .add_systems(
                 Update,
@@ -176,11 +202,14 @@ struct MorphQueries<'w, 's> {
 fn toggle_3d_view(
     keyboard: Res<ButtonInput<KeyCode>>,
     touches: Res<Touches>,
+    time: Res<Time>,
+    mut tap_state: ResMut<ThreeFingerTapState>,
     mut morph_active: ResMut<Morph3dActive>,
     mut q: MorphQueries,
     mut commands: Commands,
 ) {
-    let toggled = keyboard.just_pressed(KeyCode::KeyV) || detect_three_finger_tap(&touches);
+    let toggled = keyboard.just_pressed(KeyCode::KeyV)
+        || detect_three_finger_tap(&touches, &time, &mut tap_state);
 
     if !toggled {
         return;
@@ -235,11 +264,103 @@ fn toggle_3d_view(
     }
 }
 
-/// Simple three-finger tap detection: all three fingers pressed on the same frame.
-fn detect_three_finger_tap(touches: &Touches) -> bool {
-    let just_pressed: usize = touches.iter_just_pressed().count();
-    let total: usize = touches.iter().count();
-    just_pressed >= 3 && total >= 3
+/// Three-finger tap detection using the same state-machine approach as two-finger tap.
+///
+/// Arms when 3+ fingers are down. Fires when all lift if movement was small
+/// and duration was short.
+fn detect_three_finger_tap(
+    touches: &Touches,
+    time: &Time,
+    state: &mut ThreeFingerTapState,
+) -> bool {
+    let now = time.elapsed_secs_f64();
+
+    if now < state.cooldown_until {
+        return false;
+    }
+
+    let count = touches.iter().count();
+
+    // Clear cancelled state once all fingers lift
+    if state.cancelled {
+        if count == 0 {
+            state.cancelled = false;
+        }
+        return false;
+    }
+
+    if count >= 3 && !state.tracking {
+        // Three or more fingers appeared — start tracking
+        let mut iter = touches.iter();
+        let f0 = iter.next().unwrap();
+        let f1 = iter.next().unwrap();
+        let f2 = iter.next().unwrap();
+        state.tracking = true;
+        state.start_ids = [f0.id(), f1.id(), f2.id()];
+        state.start_positions = [f0.position(), f1.position(), f2.position()];
+        state.last_positions = state.start_positions;
+        state.start_time = now;
+        return false;
+    }
+
+    if state.tracking && count > 4 {
+        // Too many fingers — cancel
+        state.tracking = false;
+        state.cancelled = true;
+        return false;
+    }
+
+    if state.tracking && count >= 3 {
+        // Still holding — update positions and check movement
+        for (i, id) in state.start_ids.iter().enumerate() {
+            if let Some(touch) = touches.get_pressed(*id) {
+                state.last_positions[i] = touch.position();
+                if touch.position().distance(state.start_positions[i]) > TAP3_MOVE_THRESHOLD {
+                    state.tracking = false;
+                    return false;
+                }
+            }
+        }
+        if now - state.start_time > TAP3_MAX_DURATION {
+            state.tracking = false;
+            return false;
+        }
+        return false;
+    }
+
+    if state.tracking && count == 0 {
+        // All fingers lifted — check final positions
+        // Update from just-released events
+        for (i, id) in state.start_ids.iter().enumerate() {
+            for released in touches.iter_just_released() {
+                if released.id() == *id {
+                    state.last_positions[i] = released.position();
+                }
+            }
+        }
+
+        for i in 0..3 {
+            if state.last_positions[i].distance(state.start_positions[i]) > TAP3_MOVE_THRESHOLD {
+                state.tracking = false;
+                return false;
+            }
+        }
+
+        state.tracking = false;
+        let duration = now - state.start_time;
+        if duration <= TAP3_MAX_DURATION {
+            state.cooldown_until = now + TAP3_COOLDOWN;
+            return true;
+        }
+    }
+
+    // Fingers partially lifted (1-2 remaining) — keep tracking, they may
+    // just be lifting sequentially. Time out if held too long.
+    if state.tracking && count > 0 && count < 3 && now - state.start_time > TAP3_MAX_DURATION {
+        state.tracking = false;
+    }
+
+    false
 }
 
 // ── Camera follow ──────────────────────────────────────────────────────────
