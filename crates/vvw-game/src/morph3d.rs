@@ -87,6 +87,9 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
     let world = start_pos.to_world();
     let cam_pos = Vec3::new(world.x, EYE_HEIGHT, -world.y);
 
+    // Camera3d renders below Camera2d (order -1 < 0).
+    // Camera2d stays active always so Bevy UI keeps rendering.
+    // When 3D is active, 2D sprites are hidden so Camera2d only sees UI.
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -138,7 +141,6 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
 struct MorphQueries<'w, 's> {
     tiles: Query<'w, 's, &'static mut Visibility, (With<MazeTile>, Without<Mesh3dTile>)>,
     meshes: Query<'w, 's, &'static mut Visibility, (With<Mesh3dTile>, Without<MazeTile>)>,
-    cam2d: Query<'w, 's, &'static mut Camera, (With<GameCamera>, Without<GameCamera3d>)>,
     cam3d: Query<'w, 's, &'static mut Camera, (With<GameCamera3d>, Without<GameCamera>)>,
     lights3d: Query<
         'w,
@@ -202,9 +204,7 @@ fn watch_morph_mode(
     for mut vis in &mut q.meshes {
         *vis = show_3d;
     }
-    for mut cam in &mut q.cam2d {
-        cam.is_active = !want_3d;
-    }
+    // Camera2d stays active always (renders UI). Only toggle Camera3d.
     for mut cam in &mut q.cam3d {
         cam.is_active = want_3d;
     }
