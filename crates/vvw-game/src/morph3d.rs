@@ -9,7 +9,7 @@ use bevy::prelude::*;
 
 use vvw_core::maze::Maze;
 
-use crate::maze::{TrackIcon, colors};
+use crate::maze::colors;
 use crate::player::{Player, PlayerHeading};
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
@@ -64,11 +64,7 @@ fn setup_3d_meshes(
     spawn_3d_meshes_from_maze(&mut commands, &maze, &mut meshes, &mut materials);
 }
 
-fn setup_3d_camera_and_lights(
-    mut commands: Commands,
-    maze: Res<Maze>,
-    track_query: Query<(&TrackIcon, &TilePos)>,
-) {
+fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
     // Find player start for initial camera position
     let start_pos = maze.find_player_start().unwrap_or(TilePos::new(1, 1));
     let world = start_pos.to_world();
@@ -86,9 +82,11 @@ fn setup_3d_camera_and_lights(
         GameCamera3d,
     ));
 
-    // Spawn inactive point lights at track icon positions
-    for (_, tile_pos) in &track_query {
-        let tw = tile_pos.to_world();
+    // Spawn inactive point lights at track icon positions.
+    // Read from Maze resource directly (not entity queries) since TrackIcon
+    // entities may not be flushed from deferred commands yet at PostStartup.
+    for &(x, y) in maze.track_ids.keys() {
+        let tw = TilePos::new(x as i32, y as i32).to_world();
         commands.spawn((
             PointLight {
                 color: Color::srgb(0.8, 0.4, 0.2),
