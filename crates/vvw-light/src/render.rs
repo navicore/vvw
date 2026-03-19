@@ -28,7 +28,7 @@ struct BrightnessBuffer(Vec<f32>);
 
 /// Marker for the single overlay sprite
 #[derive(Component)]
-struct LightMapOverlay;
+pub struct LightMapOverlay;
 
 /// Z-layer for the darkness overlay (above scene, below UI)
 const OVERLAY_Z: f32 = 90.0;

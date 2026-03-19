@@ -37,7 +37,7 @@ pub use modes::{
     ActiveMode, InteractionModesPlugin, MockFeature1Plugin, MockFeature2Plugin, ModeId,
     ModeRegistry,
 };
-pub use morph3d::Morph3dPlugin;
+pub use morph3d::{Morph3dPlugin, register_morph_3d_mode};
 pub use mute::{MUTE_MODE_ID, MutePlugin};
 pub use pipe::{PipePlaced, PipeSpeaker, SoundPipePlugin};
 pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};

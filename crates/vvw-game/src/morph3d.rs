@@ -1,15 +1,18 @@
-//! 3D morph mode — hidden 3D geometry, inactive camera, and inactive lights
+//! 3D morph mode — switch between 2D top-down and 3D first-person view
 //!
 //! **Stage 1**: Wall boxes, floor quads, track cubes — all `Visibility::Hidden`.
 //! **Stage 2**: `Camera3d` (inactive), `PointLight` at tracks, `SpotLight` on player.
-//!
-//! The 2D game is unchanged. Stage 3 will activate the morph via the mode framework.
+//! **Stage 3**: Mode registration, activation/deactivation, visibility + camera swap.
 
 use bevy::prelude::*;
 
 use vvw_core::maze::Maze;
+use vvw_core::modes::{ModeDescriptor, ModeId};
+use vvw_light::LightMapOverlay;
 
-use crate::maze::colors;
+use crate::camera::GameCamera;
+use crate::maze::{MazeTile, colors};
+use crate::modes::{ActiveMode, ModeRegistry};
 use crate::player::{Player, PlayerHeading};
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
 
@@ -29,10 +32,11 @@ pub struct PlayerSpotlight3d;
 #[derive(Component)]
 pub struct TrackLight3d;
 
-/// Whether the 3D morph is currently active. Systems that update the 3D camera
-/// and lights check this resource. Default false — the 3D view is dormant.
+/// Whether the 3D morph is currently active.
 #[derive(Resource, Default)]
 pub struct Morph3dActive(pub bool);
+
+const MORPH_3D_MODE_ID: &str = "morph_3d";
 
 /// Wall height in world units.
 const WALL_HEIGHT: f32 = TILE_SIZE;
@@ -48,9 +52,23 @@ impl Plugin for Morph3dPlugin {
             .add_systems(PostStartup, (setup_3d_meshes, setup_3d_camera_and_lights))
             .add_systems(
                 Update,
-                follow_player_3d.run_if(|active: Res<Morph3dActive>| active.0),
+                (
+                    watch_morph_mode.run_if(resource_changed::<ActiveMode>),
+                    follow_player_3d.run_if(|active: Res<Morph3dActive>| active.0),
+                ),
             );
     }
+}
+
+/// Conditionally register the 3D mode. Called by the platform layer
+/// when `morph_3d: true` in album config.
+pub fn register_morph_3d_mode(registry: &mut ModeRegistry) {
+    registry.register(ModeDescriptor {
+        id: ModeId(MORPH_3D_MODE_ID.into()),
+        label: "3D".into(),
+        suppresses_movement: false,
+        order: 50,
+    });
 }
 
 // ── Startup ────────────────────────────────────────────────────────────────
@@ -65,12 +83,10 @@ fn setup_3d_meshes(
 }
 
 fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
-    // Find player start for initial camera position
     let start_pos = maze.find_player_start().unwrap_or(TilePos::new(1, 1));
     let world = start_pos.to_world();
     let cam_pos = Vec3::new(world.x, EYE_HEIGHT, -world.y);
 
-    // Spawn inactive Camera3d — low order so Camera2d remains primary
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -82,9 +98,6 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
         GameCamera3d,
     ));
 
-    // Spawn inactive point lights at track icon positions.
-    // Read from Maze resource directly (not entity queries) since TrackIcon
-    // entities may not be flushed from deferred commands yet at PostStartup.
     for &(x, y) in maze.track_ids.keys() {
         let tw = TilePos::new(x as i32, y as i32).to_world();
         commands.spawn((
@@ -101,7 +114,6 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
         ));
     }
 
-    // Spawn inactive spotlight as a standalone entity (follows player in update)
     commands.spawn((
         SpotLight {
             color: Color::srgb(1.0, 0.9, 0.6),
@@ -116,6 +128,102 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
         Visibility::Hidden,
         PlayerSpotlight3d,
     ));
+}
+
+// ── Mode activation ────────────────────────────────────────────────────────
+
+/// Use a `SystemParam` to bundle the many queries needed for morph toggling.
+#[derive(bevy::ecs::system::SystemParam)]
+#[allow(clippy::type_complexity)]
+struct MorphQueries<'w, 's> {
+    tiles: Query<'w, 's, &'static mut Visibility, (With<MazeTile>, Without<Mesh3dTile>)>,
+    meshes: Query<'w, 's, &'static mut Visibility, (With<Mesh3dTile>, Without<MazeTile>)>,
+    cam2d: Query<'w, 's, &'static mut Camera, (With<GameCamera>, Without<GameCamera3d>)>,
+    cam3d: Query<'w, 's, &'static mut Camera, (With<GameCamera3d>, Without<GameCamera>)>,
+    lights3d: Query<
+        'w,
+        's,
+        &'static mut Visibility,
+        (
+            Or<(With<TrackLight3d>, With<PlayerSpotlight3d>)>,
+            Without<MazeTile>,
+            Without<Mesh3dTile>,
+            Without<LightMapOverlay>,
+        ),
+    >,
+    lightmap: Query<
+        'w,
+        's,
+        &'static mut Visibility,
+        (
+            With<LightMapOverlay>,
+            Without<MazeTile>,
+            Without<Mesh3dTile>,
+            Without<TrackLight3d>,
+            Without<PlayerSpotlight3d>,
+        ),
+    >,
+    player: Query<
+        'w,
+        's,
+        &'static mut Visibility,
+        (
+            With<Player>,
+            Without<MazeTile>,
+            Without<Mesh3dTile>,
+            Without<TrackLight3d>,
+            Without<PlayerSpotlight3d>,
+            Without<LightMapOverlay>,
+        ),
+    >,
+}
+
+fn watch_morph_mode(
+    active: Res<ActiveMode>,
+    mut morph_active: ResMut<Morph3dActive>,
+    mut q: MorphQueries,
+) {
+    let want_3d = active.0.as_ref().is_some_and(|id| id.0 == MORPH_3D_MODE_ID);
+
+    if want_3d == morph_active.0 {
+        return;
+    }
+    morph_active.0 = want_3d;
+
+    let (show_2d, show_3d) = if want_3d {
+        (Visibility::Hidden, Visibility::Inherited)
+    } else {
+        (Visibility::Inherited, Visibility::Hidden)
+    };
+
+    for mut vis in &mut q.tiles {
+        *vis = show_2d;
+    }
+    for mut vis in &mut q.meshes {
+        *vis = show_3d;
+    }
+    for mut cam in &mut q.cam2d {
+        cam.is_active = !want_3d;
+    }
+    for mut cam in &mut q.cam3d {
+        cam.is_active = want_3d;
+    }
+    for mut vis in &mut q.lights3d {
+        *vis = show_3d;
+    }
+    for mut vis in &mut q.lightmap {
+        *vis = show_2d;
+    }
+    // Hide player sprite in 3D (camera IS the player)
+    for mut vis in &mut q.player {
+        *vis = show_2d;
+    }
+
+    if want_3d {
+        info!("Morph: switched to 3D");
+    } else {
+        info!("Morph: switched to 2D");
+    }
 }
 
 // ── Query filters ──────────────────────────────────────────────────────────
@@ -170,13 +278,11 @@ pub fn spawn_3d_meshes_from_maze(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
-    // Shared meshes
     let wall_mesh = meshes.add(Cuboid::new(TILE_SIZE, WALL_HEIGHT, TILE_SIZE));
     let floor_mesh = meshes.add(Cuboid::new(TILE_SIZE, 0.1, TILE_SIZE));
     let icon_size = TILE_SIZE * 0.6;
     let icon_mesh = meshes.add(Cuboid::new(icon_size, icon_size, icon_size));
 
-    // Shared materials (unlit while 3D lights are inactive)
     let wall_mat = materials.add(StandardMaterial {
         base_color: colors::WALL,
         unlit: true,
@@ -193,7 +299,6 @@ pub fn spawn_3d_meshes_from_maze(
         ..default()
     });
 
-    // Deferred — only allocated if maze contains PlayerStart tiles
     let mut start_mat = None;
 
     for y in 0..maze.height {
@@ -237,7 +342,6 @@ pub fn spawn_3d_meshes_from_maze(
                     ));
                 }
                 TileKind::TrackIcon => {
-                    // Floor under the track icon
                     commands.spawn((
                         Mesh3d(floor_mesh.clone()),
                         MeshMaterial3d(floor_mat.clone()),
@@ -245,7 +349,6 @@ pub fn spawn_3d_meshes_from_maze(
                         Visibility::Hidden,
                         Mesh3dTile,
                     ));
-                    // Track cube
                     commands.spawn((
                         Mesh3d(icon_mesh.clone()),
                         MeshMaterial3d(icon_mat.clone()),
