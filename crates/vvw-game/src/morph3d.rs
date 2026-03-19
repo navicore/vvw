@@ -479,7 +479,6 @@ pub fn spawn_3d_meshes_from_maze(
                             .get_or_insert_with(|| {
                                 materials.add(StandardMaterial {
                                     base_color: colors::PLAYER_START,
-                                    unlit: true,
                                     ..default()
                                 })
                             })
