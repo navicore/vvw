@@ -10,6 +10,7 @@ use vvw_core::physics::PhysicsConfig;
 
 use crate::maze::Maze;
 use crate::modes::{ActiveMode, ModeRegistry};
+use crate::morph3d::Morph3dActive;
 use crate::tiles::{TILE_SIZE, TilePos};
 
 /// Marker component for the player entity
@@ -156,6 +157,7 @@ pub fn handle_player_input(
     lighting: Res<LightingConfig>,
     active_mode: Res<ActiveMode>,
     mode_registry: Res<ModeRegistry>,
+    morph_active: Res<Morph3dActive>,
     mut query: Query<
         (
             &ActionState<PlayerAction>,
@@ -172,10 +174,11 @@ pub fn handle_player_input(
         return;
     }
     let dt = time.delta_secs();
-    let is_flashlight = lighting.player_light_mode == LightMode::Flashlight;
+    // 3D mode always uses heading-relative controls (like flashlight)
+    let heading_relative = morph_active.0 || lighting.player_light_mode == LightMode::Flashlight;
 
     for (action_state, movement, mut velocity, mut heading) in &mut query {
-        if is_flashlight {
+        if heading_relative {
             // Flashlight mode: Left/Right rotate, Up/Down move relative to heading
             if action_state.pressed(&PlayerAction::Left) {
                 let angle = ROTATION_SPEED * dt;
