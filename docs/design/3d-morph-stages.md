@@ -71,9 +71,9 @@ Implement the 3D morph mode from `3d-morph-mode.md` in stages that are individua
 - Track artwork on track cubes
 - Configurable wall height via `project.ron` (currently hardcoded cubicle-height)
 
-**Exploration:**
+**Future (separate from stage 4):**
 - Third-person camera option (offset behind player)
-- 3D representations of pipes and breadcrumb dots
+- 3D visual representations for pipes and breadcrumb dots (functional in both views today, just invisible in 3D)
 
 ## Constraints
 
