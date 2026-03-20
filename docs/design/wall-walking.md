@@ -4,7 +4,7 @@
 
 Let the player jump onto walls and traverse the maze from above. On the wall, the player hears all tracks at 20% gain (no wall occlusion) — enough to survey the soundscape but not enough to replace the corridor listening experience. Moving over a wall edge drops the player back to the floor. Works in both 2D and 3D.
 
-**Why.** The maze is a mixing instrument. Wall walking adds a "balcony" perspective — a lo-fi preview of the whole album that rewards exploration without undermining the immersive corridor experience. It also creates a navigation shortcut with a deliberate audio tradeoff.
+**Why.** The maze is a mixing instrument. Wall walking adds a "balcony" perspective — a lo-fi preview of the whole album that rewards exploration without undermining the immersive corridor experience. It also creates a navigation shortcut with a deliberate audio tradeoff. The reduced volume incentivizes returning to the floor and using pipes to build the ultimate mix at ground level.
 
 ## Constraints
 
@@ -66,12 +66,16 @@ Alternative (simpler): skip the second collider set entirely. When elevated, jus
 
 No new audio events. `TrackAudioState` pipeline is unchanged — only the gain input is modified.
 
+## Decided
+
+- **Pipes not audible from walls.** Pipe speakers are floor-level entities. Elevated player does not hear them. This reinforces the floor as the mixing surface.
+- **Breadcrumbs disabled while elevated.** No recording or replaying trails on walls. Avoids elevation-transition complexity and keeps breadcrumbs a floor activity.
+- **Sound visuals suppressed while elevated.** Arc animations are floor-level; showing them from above would need rework for little benefit.
+- **No fall penalty.** This is a music explorer, not a platformer. Falling is just a state transition back to corridor listening.
+
 ## Open Questions
 
-- **Should breadcrumb recording work while elevated?** Replay would need to handle elevation transitions. Simplest: disable breadcrumb recording while on walls.
-- **Should pipe placement work from walls?** Could be powerful (pipe from above to a corridor below). Could also be confusing. Start with: modes that suppress movement are unavailable while elevated.
-- **Sound visuals from above?** Arc animations currently radiate from track to player at floor level. From the wall, arcs would need to angle upward or be suppressed. Simplest: suppress while elevated.
-- **Fall damage / penalty?** Probably not — this is a music explorer, not a platformer. Fall is just a state transition.
+- **Mobile input feel.** "Hold up + tap wall" needs prototyping. May need a simpler gesture.
 
 ## Checkpoints
 
