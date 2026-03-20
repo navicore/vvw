@@ -429,10 +429,18 @@ pub fn spawn_3d_meshes_from_maze(
     let icon_size = TILE_SIZE * 0.6;
     let icon_mesh = meshes.add(Cuboid::new(icon_size, icon_size, icon_size));
 
-    let wall_mat = materials.add(StandardMaterial {
-        base_color: colors::WALL,
-        ..default()
-    });
+    let wall_mat = if let Some(image) = bg_image {
+        materials.add(StandardMaterial {
+            base_color_texture: Some(image.clone()),
+            base_color: Color::srgba(0.6, 0.6, 0.6, 1.0),
+            ..default()
+        })
+    } else {
+        materials.add(StandardMaterial {
+            base_color: colors::WALL,
+            ..default()
+        })
+    };
     let icon_mat = materials.add(StandardMaterial {
         base_color: colors::TRACK_ICON,
         ..default()
