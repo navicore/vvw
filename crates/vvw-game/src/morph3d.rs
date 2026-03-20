@@ -33,6 +33,10 @@ pub struct PlayerSpotlight3d;
 #[derive(Component)]
 pub struct TrackLight3d;
 
+/// Marker for the 3D directional (overhead) light.
+#[derive(Component)]
+pub struct OverheadLight3d;
+
 /// Whether the 3D view is currently active. Checked by player input
 /// (heading-relative controls) and the follow-camera system.
 #[derive(Resource, Default)]
@@ -129,35 +133,20 @@ fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
         GameCamera3d,
     ));
 
-    for &(x, y) in maze.track_ids.keys() {
-        let tw = TilePos::new(x as i32, y as i32).to_world();
-        commands.spawn((
-            PointLight {
-                color: Color::srgb(0.8, 0.4, 0.2),
-                intensity: 800.0,
-                range: TILE_SIZE * 4.0,
-                shadows_enabled: false,
-                ..default()
-            },
-            Transform::from_xyz(tw.x, WALL_HEIGHT * 0.8, -tw.y),
-            Visibility::Hidden,
-            TrackLight3d,
-        ));
-    }
-
+    // Directional light — sole 3D light source (warm overhead).
+    // PointLight/SpotLight are broken on WASM/WebGL2 in Bevy 0.18
+    // (see https://github.com/bevyengine/bevy/issues/21471).
+    // Re-enable per-track and player lights when the upstream fix lands.
     commands.spawn((
-        SpotLight {
-            color: Color::srgb(1.0, 0.9, 0.6),
-            intensity: 1500.0,
-            range: TILE_SIZE * 5.0,
-            outer_angle: 0.8,
-            inner_angle: 0.5,
+        DirectionalLight {
+            color: Color::srgb(0.95, 0.85, 0.7),
+            illuminance: 1500.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_translation(cam_pos).looking_to(Vec3::NEG_Z, Vec3::Y),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_3)),
         Visibility::Hidden,
-        PlayerSpotlight3d,
+        OverheadLight3d,
     ));
 }
 
@@ -176,7 +165,7 @@ struct MorphQueries<'w, 's> {
         's,
         &'static mut Visibility,
         (
-            Or<(With<TrackLight3d>, With<PlayerSpotlight3d>)>,
+            With<OverheadLight3d>,
             Without<MazeTile>,
             Without<Mesh3dTile>,
             Without<LightMapOverlay>,
@@ -190,8 +179,7 @@ struct MorphQueries<'w, 's> {
             With<LightMapOverlay>,
             Without<MazeTile>,
             Without<Mesh3dTile>,
-            Without<TrackLight3d>,
-            Without<PlayerSpotlight3d>,
+            Without<OverheadLight3d>,
         ),
     >,
     player: Query<
@@ -202,8 +190,7 @@ struct MorphQueries<'w, 's> {
             With<Player>,
             Without<MazeTile>,
             Without<Mesh3dTile>,
-            Without<TrackLight3d>,
-            Without<PlayerSpotlight3d>,
+            Without<OverheadLight3d>,
             Without<LightMapOverlay>,
         ),
     >,
@@ -387,40 +374,24 @@ fn detect_three_finger_tap(
 
 // ── Camera follow ──────────────────────────────────────────────────────────
 
-type CamFilter = (
-    With<GameCamera3d>,
-    Without<Player>,
-    Without<PlayerSpotlight3d>,
-);
-type SpotFilter = (
-    With<PlayerSpotlight3d>,
-    Without<Player>,
-    Without<GameCamera3d>,
-);
-
-/// Keep the 3D camera and spotlight in sync with the player's 2D position
-/// and heading. Only runs when `Morph3dActive` is true.
+/// Keep the 3D camera in sync with the player's 2D position and heading.
+/// Only runs when `Morph3dActive` is true.
 fn follow_player_3d(
     player_query: Query<(&Transform, &PlayerHeading), With<Player>>,
-    mut cam_query: Query<&mut Transform, CamFilter>,
-    mut spot_query: Query<&mut Transform, SpotFilter>,
+    mut cam_query: Query<&mut Transform, (With<GameCamera3d>, Without<Player>)>,
 ) {
     let Ok((player_tf, heading)) = player_query.single() else {
         return;
     };
 
     let player_2d = player_tf.translation.truncate();
-    let pos_3d = Vec3::new(player_2d.x, EYE_HEIGHT, -player_2d.y);
+    let cam_pos = Vec3::new(player_2d.x, EYE_HEIGHT, -player_2d.y);
 
     // Convert 2D heading (X, Y) to 3D look direction (X, 0, -Y)
     let look_dir = Vec3::new(heading.0.x, 0.0, -heading.0.y).normalize_or(Vec3::NEG_Z);
 
     if let Ok(mut cam_tf) = cam_query.single_mut() {
-        *cam_tf = Transform::from_translation(pos_3d).looking_to(look_dir, Vec3::Y);
-    }
-
-    if let Ok(mut spot_tf) = spot_query.single_mut() {
-        *spot_tf = Transform::from_translation(pos_3d).looking_to(look_dir, Vec3::Y);
+        *cam_tf = Transform::from_translation(cam_pos).looking_to(look_dir, Vec3::Y);
     }
 }
 
