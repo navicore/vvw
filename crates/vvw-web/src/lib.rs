@@ -254,6 +254,9 @@ fn setup_background(
 
     let handle = images.add(image);
 
+    // Store handle for 3D floor texture
+    commands.insert_resource(vvw_game::BackgroundImageHandle(handle.clone()));
+
     // Size the sprite to cover the full maze
     let maze_width = maze.width as f32 * TILE_SIZE;
     let maze_height = maze.height as f32 * TILE_SIZE;
