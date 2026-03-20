@@ -196,7 +196,6 @@ async fn run() -> Result<(), JsValue> {
         ),
     );
 
-
     if let Some(data) = background_data {
         app.insert_resource(data);
         app.add_systems(

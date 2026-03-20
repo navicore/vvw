@@ -37,12 +37,10 @@ pub struct TrackLight3d;
 #[derive(Component)]
 pub struct OverheadLight3d;
 
-
 /// Whether the 3D view is currently active. Checked by player input
 /// (heading-relative controls) and the follow-camera system.
 #[derive(Resource, Default)]
 pub struct Morph3dActive(pub bool);
-
 
 /// Optional background image handle, shared between 2D sprite and 3D floor texture.
 /// Inserted by the platform layer when a background image is loaded.
@@ -276,7 +274,6 @@ fn toggle_3d_view(
         info!("View: switched to 2D");
     }
 }
-
 
 /// Three-finger tap detection using the same state-machine approach as two-finger tap.
 ///
