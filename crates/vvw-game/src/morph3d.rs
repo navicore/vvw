@@ -42,6 +42,11 @@ pub struct OverheadLight3d;
 #[derive(Resource, Default)]
 pub struct Morph3dActive(pub bool);
 
+/// Optional background image handle, shared between 2D sprite and 3D floor texture.
+/// Inserted by the platform layer when a background image is loaded.
+#[derive(Resource)]
+pub struct BackgroundImageHandle(pub Handle<Image>);
+
 /// Whether the 3D view toggle is enabled for this album.
 /// Defaults to false; platform layer inserts `Morph3dEnabled(true)` when
 /// `morph_3d: true` in album config.
@@ -113,8 +118,16 @@ fn setup_3d_meshes(
     maze: Res<Maze>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    bg_handle: Option<Res<BackgroundImageHandle>>,
 ) {
-    spawn_3d_meshes_from_maze(&mut commands, &maze, &mut meshes, &mut materials);
+    let bg = bg_handle.map(|h| h.0.clone());
+    spawn_3d_meshes_from_maze(
+        &mut commands,
+        &maze,
+        &mut meshes,
+        &mut materials,
+        bg.as_ref(),
+    );
 }
 
 fn setup_3d_camera_and_lights(mut commands: Commands, maze: Res<Maze>) {
@@ -400,14 +413,19 @@ fn follow_player_3d(
 /// Spawn hidden 3D meshes for the current maze state.
 ///
 /// Called at startup and on `MazeChanged` (via `respawn_maze_tiles`).
+/// If `bg_image` is provided, the floor is a single textured quad spanning
+/// the entire maze (the album artwork). Otherwise, per-tile floor quads are used.
 pub fn spawn_3d_meshes_from_maze(
     commands: &mut Commands,
     maze: &Maze,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    bg_image: Option<&Handle<Image>>,
 ) {
+    let maze_width = maze.width as f32 * TILE_SIZE;
+    let maze_height = maze.height as f32 * TILE_SIZE;
+
     let wall_mesh = meshes.add(Cuboid::new(TILE_SIZE, WALL_HEIGHT, TILE_SIZE));
-    let floor_mesh = meshes.add(Cuboid::new(TILE_SIZE, 0.1, TILE_SIZE));
     let icon_size = TILE_SIZE * 0.6;
     let icon_mesh = meshes.add(Cuboid::new(icon_size, icon_size, icon_size));
 
@@ -415,16 +433,35 @@ pub fn spawn_3d_meshes_from_maze(
         base_color: colors::WALL,
         ..default()
     });
-    let floor_mat = materials.add(StandardMaterial {
-        base_color: colors::FLOOR,
-        ..default()
-    });
     let icon_mat = materials.add(StandardMaterial {
         base_color: colors::TRACK_ICON,
         ..default()
     });
 
-    let mut start_mat = None;
+    let has_bg = bg_image.is_some();
+
+    // Floor: single large textured quad if background exists, per-tile otherwise
+    if let Some(image) = bg_image {
+        let floor_mesh = meshes.add(Cuboid::new(maze_width, 0.1, maze_height));
+        let floor_mat = materials.add(StandardMaterial {
+            base_color_texture: Some(image.clone()),
+            base_color: Color::WHITE,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(floor_mesh),
+            MeshMaterial3d(floor_mat),
+            Transform::from_xyz(maze_width / 2.0, -0.05, -maze_height / 2.0),
+            Visibility::Hidden,
+            Mesh3dTile,
+        ));
+    }
+
+    let floor_tile_mesh = meshes.add(Cuboid::new(TILE_SIZE, 0.1, TILE_SIZE));
+    let floor_mat = materials.add(StandardMaterial {
+        base_color: colors::FLOOR,
+        ..default()
+    });
 
     for y in 0..maze.height {
         for x in 0..maze.width {
@@ -445,34 +482,27 @@ pub fn spawn_3d_meshes_from_maze(
                     ));
                 }
                 TileKind::Floor | TileKind::PlayerStart => {
-                    let mat = if tile == TileKind::PlayerStart {
-                        start_mat
-                            .get_or_insert_with(|| {
-                                materials.add(StandardMaterial {
-                                    base_color: colors::PLAYER_START,
-                                    ..default()
-                                })
-                            })
-                            .clone()
-                    } else {
-                        floor_mat.clone()
-                    };
-                    commands.spawn((
-                        Mesh3d(floor_mesh.clone()),
-                        MeshMaterial3d(mat),
-                        Transform::from_xyz(world_x, 0.0, world_z),
-                        Visibility::Hidden,
-                        Mesh3dTile,
-                    ));
+                    // Skip per-tile floor when background image covers the whole maze
+                    if !has_bg {
+                        commands.spawn((
+                            Mesh3d(floor_tile_mesh.clone()),
+                            MeshMaterial3d(floor_mat.clone()),
+                            Transform::from_xyz(world_x, 0.0, world_z),
+                            Visibility::Hidden,
+                            Mesh3dTile,
+                        ));
+                    }
                 }
                 TileKind::TrackIcon => {
-                    commands.spawn((
-                        Mesh3d(floor_mesh.clone()),
-                        MeshMaterial3d(floor_mat.clone()),
-                        Transform::from_xyz(world_x, 0.0, world_z),
-                        Visibility::Hidden,
-                        Mesh3dTile,
-                    ));
+                    if !has_bg {
+                        commands.spawn((
+                            Mesh3d(floor_tile_mesh.clone()),
+                            MeshMaterial3d(floor_mat.clone()),
+                            Transform::from_xyz(world_x, 0.0, world_z),
+                            Visibility::Hidden,
+                            Mesh3dTile,
+                        ));
+                    }
                     commands.spawn((
                         Mesh3d(icon_mesh.clone()),
                         MeshMaterial3d(icon_mat.clone()),

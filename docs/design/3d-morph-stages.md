@@ -66,10 +66,12 @@ Implement the 3D morph mode from `3d-morph-mode.md` in stages that are individua
 - Consider directional overhead light for even illumination
 
 **Visual polish:**
-- Camera morph animation (smooth transition over ~1s instead of hard swap)
 - Artwork on wall surfaces (album background texture)
 - Track artwork on track cubes
 - Configurable wall height via `project.ron` (currently hardcoded cubicle-height)
+
+**Shelved:**
+- Camera morph animation — a true smooth morph requires both renderers active simultaneously, too expensive. Fade-through-black is cheap but not interesting enough to justify the work. Revisit if Bevy adds render-target blending.
 
 **Future (separate from stage 4):**
 - Third-person camera option (offset behind player)

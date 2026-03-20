@@ -184,5 +184,11 @@ fn respawn_maze_tiles(
 
     // Spawn fresh 2D tiles and 3D meshes from current maze
     spawn_maze_tiles(&mut commands, &maze, &lighting, &physics);
-    crate::morph3d::spawn_3d_meshes_from_maze(&mut commands, &maze, &mut meshes, &mut materials);
+    crate::morph3d::spawn_3d_meshes_from_maze(
+        &mut commands,
+        &maze,
+        &mut meshes,
+        &mut materials,
+        None,
+    );
 }
