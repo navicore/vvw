@@ -27,10 +27,12 @@ New component `Elevated(bool)` on the player entity. When true:
 
 ### Jump / mount
 
-- **Desktop:** Spacebar = jump (small visual bounce, no state change). Spacebar + Up arrow while adjacent to a wall = mount wall. Player position snaps to the wall tile center.
-- **Mobile:** Hold Up on D-pad + tap wall with one finger = mount. Requires touch target on the adjacent wall tile.
+- **Desktop:** Spacebar while adjacent to a wall = mount wall. Player position snaps to the wall tile center.
+- **Mobile (primary):** Swipe up on the D-pad up button (~30px vertical drag within ~300ms). Distinct from a normal press (which just moves the player). Feels natural: "flick up to jump."
+- **Mobile (bonus):** Device shake on Android. `DeviceMotionEvent` fires without a permission prompt on Android Chrome. iOS Safari requires `requestPermission()` from a user gesture, so shake is silently unavailable there — falls back to swipe-up. `vvw-web` registers a `devicemotion` listener (only if the API exists without a permission gate), computes acceleration magnitude, and sends a `ShakeDetected` event into the Bevy world.
+- **Mobile (last resort):** Double-tap the D-pad up button within ~400ms. Available if swipe-up proves awkward in testing.
 
-Implementation: a system checks (1) jump input active, (2) player is adjacent to a wall tile, (3) directional input points toward that wall. If all true, set `Elevated(true)`, snap position to wall tile, swap collision layer.
+Implementation: a system checks (1) mount input active (spacebar, swipe-up, shake, or double-tap), (2) player is adjacent to a wall tile. If both true, set `Elevated(true)`, snap position to the nearest adjacent wall tile center, swap collision layer. Desktop spacebar does not require a directional input — proximity to any adjacent wall is sufficient.
 
 ### Movement on walls
 
@@ -75,7 +77,8 @@ No new audio events. `TrackAudioState` pipeline is unchanged — only the gain i
 
 ## Open Questions
 
-- **Mobile input feel.** "Hold up + tap wall" needs prototyping. May need a simpler gesture.
+- **Swipe-up threshold tuning.** ~30px / ~300ms is a starting guess. May need adjustment after device testing to avoid false positives during normal D-pad use.
+- **Shake sensitivity.** Acceleration magnitude threshold TBD. Must be high enough to avoid false triggers from walking/transit, low enough to feel responsive.
 
 ## Checkpoints
 
@@ -85,5 +88,7 @@ No new audio events. `TrackAudioState` pipeline is unchanged — only the gain i
 - [ ] Audio gain is ~20% of floor-level gain at same distance (LOS bypassed)
 - [ ] 3D camera rises to wall height on mount, drops on fall
 - [ ] Existing albums with `wall_walking: false` (or absent) show no behavioral change
-- [ ] Mobile touch input mounts wall correctly
+- [ ] Swipe-up on D-pad up button mounts wall (mobile)
+- [ ] Shake mounts wall on Android (silently no-op on iOS)
+- [ ] Double-tap up available as fallback if swipe-up is awkward
 - [ ] All 26 existing tests still pass
