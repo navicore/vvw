@@ -26,6 +26,7 @@ mod sound_visuals;
 mod spatial;
 mod tiles;
 mod touch;
+pub mod wall_walking;
 
 pub use audio::{SpatialAudioPlugin, SpatialAudioSet, TrackAudioState, TrackIdCounter};
 pub use breadcrumb::BreadcrumbPlugin;
@@ -43,6 +44,7 @@ pub use pipe::{PipePlaced, PipeSpeaker, SoundPipePlugin};
 pub use player::{Player, PlayerLight, PlayerMovement, PlayerPlugin};
 pub use sound_visuals::SoundVisualsEnabled;
 pub use tiles::{TILE_SIZE, TileKind, TilePos};
+pub use wall_walking::{Elevated, WallJumpRequested, WallWalkingEnabled, WallWalkingPlugin};
 
 use avian2d::PhysicsPlugins;
 use avian2d::prelude::Gravity;
@@ -69,6 +71,7 @@ impl Plugin for VvwGamePlugin {
             InteractionModesPlugin,
             MutePlugin,
             Morph3dPlugin,
+            wall_walking::WallWalkingPlugin,
         ));
     }
 }

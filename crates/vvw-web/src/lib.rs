@@ -23,7 +23,7 @@ use vvw_game::{
     ActiveMode, BreadcrumbPlugin, MUTE_MODE_ID, Maze, MazeTile, MockFeature1Plugin,
     MockFeature2Plugin, Morph3dEnabled, PipePlaced, PipeSpeaker, SoundPipePlugin,
     SoundVisualsEnabled, SpatialAudioSet, TILE_SIZE, TrackAudioState, TrackIcon, TrackIdCounter,
-    VvwGamePlugin, spawn_maze_tiles,
+    VvwGamePlugin, WallWalkingEnabled, spawn_maze_tiles,
 };
 
 use audio::WebAudioEngine;
@@ -151,9 +151,12 @@ async fn run() -> Result<(), JsValue> {
             ..default()
         }));
 
-    // Insert Morph3dEnabled before VvwGamePlugin so init_resource won't overwrite it
+    // Insert feature resources before VvwGamePlugin so init_resource won't overwrite them
     if loaded.manifest.album.morph_3d {
         app.insert_resource(Morph3dEnabled(true));
+    }
+    if loaded.manifest.album.wall_walking {
+        app.insert_resource(WallWalkingEnabled(true));
     }
 
     app.add_plugins(VvwGamePlugin);

@@ -12,6 +12,7 @@ use crate::maze::Maze;
 use crate::modes::{ActiveMode, ModeRegistry};
 use crate::morph3d::Morph3dActive;
 use crate::tiles::{TILE_SIZE, TilePos};
+use crate::wall_walking::Elevated;
 
 /// Marker component for the player entity
 #[derive(Component)]
@@ -50,6 +51,7 @@ pub enum PlayerAction {
     Down,
     Left,
     Right,
+    Jump,
 }
 
 impl PlayerAction {
@@ -59,6 +61,7 @@ impl PlayerAction {
             Self::Down => Vec2::NEG_Y,
             Self::Left => Vec2::NEG_X,
             Self::Right => Vec2::X,
+            Self::Jump => Vec2::ZERO,
         }
     }
 
@@ -72,6 +75,7 @@ impl PlayerAction {
             (Self::Left, KeyCode::ArrowLeft),
             (Self::Right, KeyCode::KeyD),
             (Self::Right, KeyCode::ArrowRight),
+            (Self::Jump, KeyCode::Space),
         ])
     }
 }
@@ -116,6 +120,7 @@ fn spawn_player(
     commands
         .spawn((
             Player,
+            Elevated::default(),
             PlayerHeading(Vec2::Y),
             PlayerMovement {
                 tile_pos: start_pos,
@@ -227,7 +232,7 @@ pub fn handle_player_input(
 }
 
 /// Keep `tile_pos` in sync with the physics-driven `Transform`
-fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player>>) {
+pub fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player>>) {
     for (transform, mut movement) in &mut query {
         let new_tile_pos = TilePos::from_world(transform.translation.truncate());
         if new_tile_pos != movement.tile_pos {

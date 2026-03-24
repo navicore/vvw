@@ -16,6 +16,7 @@ use crate::camera::GameCamera;
 use crate::maze::{MazeTile, colors};
 use crate::player::{Player, PlayerHeading};
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
+use crate::wall_walking::Elevated;
 
 /// Marker component for 3D tile meshes (walls, floors, track cubes).
 #[derive(Component)]
@@ -390,15 +391,20 @@ fn detect_three_finger_tap(
 /// Keep the 3D camera in sync with the player's 2D position and heading.
 /// Only runs when `Morph3dActive` is true.
 fn follow_player_3d(
-    player_query: Query<(&Transform, &PlayerHeading), With<Player>>,
+    player_query: Query<(&Transform, &PlayerHeading, &Elevated), With<Player>>,
     mut cam_query: Query<&mut Transform, (With<GameCamera3d>, Without<Player>)>,
 ) {
-    let Ok((player_tf, heading)) = player_query.single() else {
+    let Ok((player_tf, heading, elevated)) = player_query.single() else {
         return;
     };
 
     let player_2d = player_tf.translation.truncate();
-    let cam_pos = Vec3::new(player_2d.x, EYE_HEIGHT, -player_2d.y);
+    let eye_y = if elevated.0 {
+        WALL_HEIGHT + EYE_HEIGHT
+    } else {
+        EYE_HEIGHT
+    };
+    let cam_pos = Vec3::new(player_2d.x, eye_y, -player_2d.y);
 
     // Convert 2D heading (X, Y) to 3D look direction (X, 0, -Y)
     let look_dir = Vec3::new(heading.0.x, 0.0, -heading.0.y).normalize_or(Vec3::NEG_Z);
