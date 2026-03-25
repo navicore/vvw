@@ -3,6 +3,11 @@
 //! When elevated, the player hears all tracks at 20% gain (no wall occlusion).
 //! Moving to a non-wall tile drops the player back to the floor.
 //! Album opt-in via `wall_walking: bool` in `AlbumMetadata`.
+//!
+//! Physics approach: collision layers. The player stays `RigidBody::Dynamic`
+//! always. Wall/track colliders are on `GameLayer::Floor`. When the player
+//! mounts a wall, their collision layer swaps to `GameLayer::Elevated`,
+//! making wall colliders invisible to physics. `LinearDamping` still applies.
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
@@ -11,6 +16,19 @@ use leafwing_input_manager::prelude::*;
 use crate::maze::Maze;
 use crate::player::{Player, PlayerAction, PlayerMovement};
 use crate::tiles::TilePos;
+
+/// Collision layers for surface-based physics filtering.
+///
+/// Entities declare which layer they belong to. Only entities on the same
+/// layer collide with each other. New surface types = new variants.
+#[derive(PhysicsLayer, Clone, Copy, Debug, Default)]
+pub enum GameLayer {
+    /// Floor level: walls and track icons block movement.
+    #[default]
+    Floor,
+    /// Elevated level: player walks on top of walls, passes through them.
+    Elevated,
+}
 
 /// Whether the player is elevated (walking on walls).
 #[derive(Component, Default, Debug, Clone, Copy)]
@@ -50,7 +68,7 @@ impl Plugin for WallWalkingPlugin {
                 (
                     try_mount_wall,
                     clamp_elevated_movement.after(crate::player::sync_tile_pos),
-                    toggle_wall_physics,
+                    swap_collision_layer,
                     update_elevation_visuals,
                 )
                     .chain(),
@@ -150,9 +168,9 @@ fn clamp_elevated_movement(
     }
 }
 
-/// Swap between Dynamic and Kinematic rigid body on elevation changes.
-/// Kinematic bodies pass through static wall colliders.
-fn toggle_wall_physics(
+/// Swap player collision layer on mount/fall.
+/// `CollisionLayers` is immutable in avian2d — must remove/re-insert.
+fn swap_collision_layer(
     mut elevated_events: MessageReader<PlayerElevated>,
     mut fell_events: MessageReader<PlayerFell>,
     mut commands: Commands,
@@ -172,13 +190,16 @@ fn toggle_wall_physics(
     if mounted {
         commands
             .entity(player_entity)
-            .remove::<RigidBody>()
-            .insert(RigidBody::Kinematic);
+            .remove::<CollisionLayers>()
+            .insert(CollisionLayers::new(
+                GameLayer::Elevated,
+                GameLayer::Elevated,
+            ));
     } else if fell {
         commands
             .entity(player_entity)
-            .remove::<RigidBody>()
-            .insert(RigidBody::Dynamic);
+            .remove::<CollisionLayers>()
+            .insert(CollisionLayers::new(GameLayer::Floor, GameLayer::Floor));
     }
 }
 

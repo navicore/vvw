@@ -12,7 +12,7 @@ use crate::maze::Maze;
 use crate::modes::{ActiveMode, ModeRegistry};
 use crate::morph3d::Morph3dActive;
 use crate::tiles::{TILE_SIZE, TilePos};
-use crate::wall_walking::Elevated;
+use crate::wall_walking::{Elevated, GameLayer};
 
 /// Marker component for the player entity
 #[derive(Component)]
@@ -55,7 +55,7 @@ pub enum PlayerAction {
 }
 
 impl PlayerAction {
-    fn as_vec2(self) -> Vec2 {
+    pub fn as_vec2(self) -> Vec2 {
         match self {
             Self::Up => Vec2::Y,
             Self::Down => Vec2::NEG_Y,
@@ -136,6 +136,7 @@ fn spawn_player(
             // Physics components — circle collider slides past wall corners
             RigidBody::Dynamic,
             Collider::circle(player_size / 2.0),
+            CollisionLayers::new(GameLayer::Floor, GameLayer::Floor),
             Friction::new(physics.player_friction),
             Restitution::new(physics.player_restitution),
             LinearDamping(physics.player_linear_damping),
