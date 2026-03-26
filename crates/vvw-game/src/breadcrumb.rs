@@ -301,8 +301,12 @@ fn record_samples(
         return;
     }
 
+    let Ok((tf, heading, elevated)) = player_query.single() else {
+        return;
+    };
+
     // Don't record while on walls
-    if player_query.single().is_ok_and(|(_, _, e)| e.0) {
+    if elevated.0 {
         return;
     }
 
@@ -320,10 +324,6 @@ fn record_samples(
     let pending = (state.sample_timer / SAMPLE_INTERVAL) as u32;
     state.sample_timer -= pending as f32 * SAMPLE_INTERVAL;
     state.sample_count += pending;
-
-    let Ok((tf, heading, _)) = player_query.single() else {
-        return;
-    };
 
     let pos = tf.translation.truncate();
     let elapsed = state.sample_count as f32 * SAMPLE_INTERVAL;
@@ -365,8 +365,12 @@ fn replay_trail(
         return;
     }
 
+    let Ok((mut position, mut velocity, mut heading, elevated)) = player_query.single_mut() else {
+        return;
+    };
+
     // Don't replay while on walls
-    if player_query.single().is_ok_and(|(_, _, _, e)| e.0) {
+    if elevated.0 {
         return;
     }
 
@@ -396,10 +400,6 @@ fn replay_trail(
 
     // When walking backward, reverse the heading
     let effective_heading = if state.replay_backward { -hdg } else { hdg };
-
-    let Ok((mut position, mut velocity, mut heading, _)) = player_query.single_mut() else {
-        return;
-    };
 
     position.0 = pos;
     velocity.0 = Vec2::ZERO;

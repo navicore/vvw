@@ -69,6 +69,7 @@ impl Plugin for WallWalkingPlugin {
                     try_mount_wall,
                     clamp_elevated_movement.after(crate::player::sync_tile_pos),
                     swap_collision_layer,
+                    ApplyDeferred,
                     update_elevation_visuals,
                 )
                     .chain(),
