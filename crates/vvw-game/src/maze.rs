@@ -14,6 +14,7 @@ pub use vvw_core::maze::Maze;
 use crate::audio::TrackAudioState;
 use crate::morph3d::Mesh3dTile;
 use crate::tiles::{TILE_SIZE, TileKind, TilePos};
+use crate::wall_walking::GameLayer;
 
 /// Marker component for maze tiles (for cleanup)
 #[derive(Component)]
@@ -90,9 +91,22 @@ pub fn spawn_maze_tiles(
             ));
 
             if tile == TileKind::Wall {
+                // Outer edge walls block both floor and elevated players
+                // so elevated players can't walk off the world.
+                let is_edge = x == 0 || x == maze.width - 1 || y == 0 || y == maze.height - 1;
+                let layers = if is_edge {
+                    CollisionLayers::new(
+                        [GameLayer::Floor, GameLayer::Elevated],
+                        [GameLayer::Floor, GameLayer::Elevated],
+                    )
+                } else {
+                    CollisionLayers::new(GameLayer::Floor, GameLayer::Floor)
+                };
+
                 entity.insert((
                     RigidBody::Static,
                     Collider::rectangle(TILE_SIZE, TILE_SIZE),
+                    layers,
                     Friction::new(physics.wall_friction),
                     Restitution::new(physics.wall_restitution),
                     LightOccluder2d {
@@ -117,6 +131,7 @@ pub fn spawn_maze_tiles(
                     TrackAudioState::default(),
                     RigidBody::Static,
                     Collider::rectangle(icon_size, icon_size),
+                    CollisionLayers::new(GameLayer::Floor, GameLayer::Floor),
                     Friction::new(physics.wall_friction),
                     Restitution::new(physics.track_restitution),
                 ));

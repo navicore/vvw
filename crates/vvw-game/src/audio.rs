@@ -8,9 +8,11 @@ use bevy::prelude::*;
 use vvw_light::{AmbientLight2d, LightingConfig, PointLight2d};
 
 use crate::maze::{TrackIcon, TrackLight};
+use crate::pipe::PipeSpeaker;
 use crate::player::{Player, PlayerLight};
 use crate::spatial;
 use crate::tiles::TilePos;
+use crate::wall_walking::Elevated;
 
 /// Counter for track IDs
 #[derive(Resource, Default)]
@@ -70,23 +72,28 @@ impl Plugin for SpatialAudioPlugin {
     }
 }
 
+/// Gain multiplier applied to all tracks when the player is elevated (on walls).
+const ELEVATED_GAIN_MULTIPLIER: f32 = 0.2;
+
 /// Compute spatial targets (gain, pan, visibility) from player position and maze LOS
 fn compute_spatial_targets(
-    player_query: Query<&Transform, With<Player>>,
-    mut track_query: Query<(&TrackIcon, &TilePos, &mut TrackAudioState)>,
+    player_query: Query<(&Transform, &Elevated), With<Player>>,
+    mut track_query: Query<(
+        &TrackIcon,
+        &TilePos,
+        &mut TrackAudioState,
+        Option<&PipeSpeaker>,
+    )>,
     maze: Res<crate::maze::Maze>,
 ) {
-    let Ok(player_transform) = player_query.single() else {
+    let Ok((player_transform, elevated)) = player_query.single() else {
         return;
     };
 
     let player_world = player_transform.translation.truncate();
     let player_pos = TilePos::from_world(player_world);
 
-    for (_track_icon, tile_pos, mut state) in &mut track_query {
-        let visible = spatial::has_line_of_sight(&maze, player_pos, *tile_pos);
-        state.visible = visible;
-
+    for (_track_icon, tile_pos, mut state, pipe_speaker) in &mut track_query {
         // Always update pan and distance so direction is current when LOS resumes
         let track_world = tile_pos.to_world();
         state.target_pan = spatial::calculate_pan(player_world, track_world);
@@ -94,14 +101,32 @@ fn compute_spatial_targets(
         let distance = player_pos.distance(*tile_pos);
         state.distance = distance;
 
-        if visible {
-            state.target_gain = spatial::distance_gain(
-                distance,
-                spatial::DEFAULT_HALF_DISTANCE,
-                spatial::DEFAULT_MAX_DISTANCE,
-            );
+        if elevated.0 {
+            // On walls: pipes are silent, all other tracks bypass LOS at 20% gain
+            if pipe_speaker.is_some() {
+                state.visible = false;
+                state.target_gain = 0.0;
+            } else {
+                state.visible = true;
+                state.target_gain = spatial::distance_gain(
+                    distance,
+                    spatial::DEFAULT_HALF_DISTANCE,
+                    spatial::DEFAULT_MAX_DISTANCE,
+                ) * ELEVATED_GAIN_MULTIPLIER;
+            }
         } else {
-            state.target_gain = 0.0;
+            let visible = spatial::has_line_of_sight(&maze, player_pos, *tile_pos);
+            state.visible = visible;
+
+            if visible {
+                state.target_gain = spatial::distance_gain(
+                    distance,
+                    spatial::DEFAULT_HALF_DISTANCE,
+                    spatial::DEFAULT_MAX_DISTANCE,
+                );
+            } else {
+                state.target_gain = 0.0;
+            }
         }
     }
 }

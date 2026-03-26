@@ -11,6 +11,7 @@ use crate::morph3d::Morph3dActive;
 use crate::player::{
     Player, PlayerHeading, PlayerMovement, ROTATION_SPEED, handle_player_input, sync_player_light,
 };
+use crate::wall_walking::WallJumpRequested;
 
 /// Plugin for touch-based movement controls
 pub struct TouchControlsPlugin;
@@ -18,11 +19,13 @@ pub struct TouchControlsPlugin;
 impl Plugin for TouchControlsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TouchState>()
+            .init_resource::<DPadJumpState>()
             .add_systems(Startup, spawn_dpad_overlay)
             .add_systems(
                 Update,
                 (
                     detect_touch_device,
+                    detect_dpad_jump,
                     handle_touch_input
                         .after(handle_player_input)
                         .before(sync_player_light),
@@ -37,6 +40,30 @@ impl Plugin for TouchControlsPlugin {
 #[derive(Resource, Default)]
 struct TouchState {
     touch_detected: bool,
+}
+
+// ── Swipe-up / double-tap detection ───────────────────────────────────────
+
+/// Minimum upward drag in screen pixels to count as a swipe-up.
+const SWIPE_THRESHOLD_PX: f32 = 30.0;
+/// Maximum duration of a swipe gesture in seconds.
+const SWIPE_MAX_DURATION_SECS: f64 = 0.3;
+/// Maximum gap between two taps to count as a double-tap.
+const DOUBLE_TAP_MAX_GAP_SECS: f64 = 0.4;
+
+/// State for detecting swipe-up and double-tap on the D-pad Up button.
+#[derive(Resource, Default)]
+struct DPadJumpState {
+    /// Whether the Up button was pressed last frame.
+    was_pressed: bool,
+    /// Touch ID of the finger on the Up button (for multi-touch filtering).
+    tracked_touch_id: Option<u64>,
+    /// Screen-space Y when the Up button press started.
+    press_start_y: Option<f32>,
+    /// Time when the Up button press started.
+    press_start_time: f64,
+    /// Time of last Up button release (for double-tap).
+    last_release_time: f64,
 }
 
 /// Marker for the D-pad overlay container
@@ -238,6 +265,67 @@ fn handle_touch_input(
             velocity.0 += direction * movement.speed * dt;
         }
     }
+}
+
+/// Detect swipe-up or double-tap on the D-pad Up button and fire `WallJumpRequested`.
+fn detect_dpad_jump(
+    time: Res<Time>,
+    touches: Res<Touches>,
+    touch_state: Res<TouchState>,
+    mut jump_state: ResMut<DPadJumpState>,
+    mut jump_events: MessageWriter<WallJumpRequested>,
+    button_query: Query<(&Interaction, &DPadButton)>,
+) {
+    if !touch_state.touch_detected {
+        return;
+    }
+
+    // Check if Up button is currently pressed
+    let up_pressed = button_query
+        .iter()
+        .any(|(interaction, btn)| btn.direction == Vec2::Y && *interaction == Interaction::Pressed);
+
+    let now = time.elapsed_secs_f64();
+
+    if up_pressed && !jump_state.was_pressed {
+        // Up button just pressed — record the specific touch finger and position.
+        // Double-tap: compare press time (not release) against last release.
+        if let Some(touch) = touches.iter_just_pressed().next() {
+            jump_state.tracked_touch_id = Some(touch.id());
+            jump_state.press_start_y = Some(touch.position().y);
+            jump_state.press_start_time = now;
+        }
+
+        let gap = now - jump_state.last_release_time;
+        if gap <= DOUBLE_TAP_MAX_GAP_SECS && jump_state.last_release_time > 0.0 {
+            jump_events.write(WallJumpRequested);
+        }
+    }
+
+    if up_pressed {
+        // Check for swipe-up while pressed — filter by tracked finger
+        if let (Some(start_y), Some(tid)) = (jump_state.press_start_y, jump_state.tracked_touch_id)
+        {
+            let elapsed = now - jump_state.press_start_time;
+            if elapsed <= SWIPE_MAX_DURATION_SECS
+                && let Some(touch) = touches.iter().find(|t| t.id() == tid)
+            {
+                let dy = start_y - touch.position().y; // positive = upward
+                if dy >= SWIPE_THRESHOLD_PX {
+                    jump_events.write(WallJumpRequested);
+                    jump_state.press_start_y = None; // consume gesture
+                }
+            }
+        }
+    }
+
+    if !up_pressed && jump_state.was_pressed {
+        jump_state.last_release_time = now;
+        jump_state.press_start_y = None;
+        jump_state.tracked_touch_id = None;
+    }
+
+    jump_state.was_pressed = up_pressed;
 }
 
 /// Update button visuals based on interaction state

@@ -14,6 +14,7 @@ use vvw_core::modes::{ModeDescriptor, ModeId};
 
 use crate::modes::{ActiveMode, ModeRegistry};
 use crate::player::{Player, PlayerHeading};
+use crate::wall_walking::Elevated;
 
 const LAY_TRAIL_MODE_ID: &str = "lay_trail";
 const WALK_TRAIL_MODE_ID: &str = "walk_trail";
@@ -293,10 +294,19 @@ fn watch_mode_changes(
 fn record_samples(
     time: Res<Time>,
     mut state: ResMut<BreadcrumbState>,
-    player_query: Query<(&Transform, &PlayerHeading), With<Player>>,
+    player_query: Query<(&Transform, &PlayerHeading, &Elevated), With<Player>>,
     mut commands: Commands,
 ) {
     if !matches!(state.phase, BreadcrumbPhase::Recording) {
+        return;
+    }
+
+    let Ok((tf, heading, elevated)) = player_query.single() else {
+        return;
+    };
+
+    // Don't record while on walls
+    if elevated.0 {
         return;
     }
 
@@ -314,10 +324,6 @@ fn record_samples(
     let pending = (state.sample_timer / SAMPLE_INTERVAL) as u32;
     state.sample_timer -= pending as f32 * SAMPLE_INTERVAL;
     state.sample_count += pending;
-
-    let Ok((tf, heading)) = player_query.single() else {
-        return;
-    };
 
     let pos = tf.translation.truncate();
     let elapsed = state.sample_count as f32 * SAMPLE_INTERVAL;
@@ -345,9 +351,27 @@ fn record_samples(
 fn replay_trail(
     time: Res<Time>,
     mut state: ResMut<BreadcrumbState>,
-    mut player_query: Query<(&mut Position, &mut LinearVelocity, &mut PlayerHeading), With<Player>>,
+    mut player_query: Query<
+        (
+            &mut Position,
+            &mut LinearVelocity,
+            &mut PlayerHeading,
+            &Elevated,
+        ),
+        With<Player>,
+    >,
 ) {
     if !matches!(state.phase, BreadcrumbPhase::Playing) {
+        return;
+    }
+
+    let Ok((mut position, mut velocity, mut heading, elevated)) = player_query.single_mut() else {
+        return;
+    };
+
+    // Don't replay while on walls — zero velocity to prevent drift
+    if elevated.0 {
+        velocity.0 = Vec2::ZERO;
         return;
     }
 
@@ -377,10 +401,6 @@ fn replay_trail(
 
     // When walking backward, reverse the heading
     let effective_heading = if state.replay_backward { -hdg } else { hdg };
-
-    let Ok((mut position, mut velocity, mut heading)) = player_query.single_mut() else {
-        return;
-    };
 
     position.0 = pos;
     velocity.0 = Vec2::ZERO;

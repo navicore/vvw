@@ -48,6 +48,9 @@ pub struct AlbumMetadata {
     /// Enable 3D morph mode — player can switch between 2D top-down and 3D first-person
     #[serde(default)]
     pub morph_3d: bool,
+    /// Enable wall walking — player can jump onto walls and traverse from above
+    #[serde(default)]
+    pub wall_walking: bool,
 }
 
 /// Per-track metadata for web publishing
@@ -174,6 +177,7 @@ mod tests {
                 sound_piping: false,
                 breadcrumbs: false,
                 morph_3d: false,
+                wall_walking: false,
             },
         };
 

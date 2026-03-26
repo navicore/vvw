@@ -248,6 +248,7 @@ pub fn create_album(opts: &CreateOptions) -> Result<()> {
             sound_piping: false,
             breadcrumbs: false,
             morph_3d: false,
+            wall_walking: false,
         },
     };
 

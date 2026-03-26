@@ -12,6 +12,7 @@ use crate::audio::{SpatialAudioSet, TrackAudioState};
 use crate::maze::TrackIcon;
 use crate::player::Player;
 use crate::tiles::TILE_SIZE;
+use crate::wall_walking::Elevated;
 
 /// Resource controlling whether sound visuals are enabled for this album.
 #[derive(Resource, Default)]
@@ -80,9 +81,17 @@ impl Plugin for SoundVisualsPlugin {
                 spawn_arcs.before(update_arcs),
                 update_arcs.after(SpatialAudioSet),
             )
-                .run_if(|enabled: Res<SoundVisualsEnabled>| enabled.0),
+                .run_if(sound_visuals_active),
         );
     }
+}
+
+/// Run condition: visuals enabled AND player is not elevated.
+fn sound_visuals_active(
+    enabled: Res<SoundVisualsEnabled>,
+    player: Query<&Elevated, With<Player>>,
+) -> bool {
+    enabled.0 && player.single().is_ok_and(|e| !e.0)
 }
 
 /// Build an arc band mesh centered on the +Y axis.

@@ -12,6 +12,7 @@ use crate::maze::Maze;
 use crate::modes::{ActiveMode, ModeRegistry};
 use crate::morph3d::Morph3dActive;
 use crate::tiles::{TILE_SIZE, TilePos};
+use crate::wall_walking::{Elevated, GameLayer};
 
 /// Marker component for the player entity
 #[derive(Component)]
@@ -50,15 +51,17 @@ pub enum PlayerAction {
     Down,
     Left,
     Right,
+    Jump,
 }
 
 impl PlayerAction {
-    fn as_vec2(self) -> Vec2 {
+    pub fn as_vec2(self) -> Vec2 {
         match self {
             Self::Up => Vec2::Y,
             Self::Down => Vec2::NEG_Y,
             Self::Left => Vec2::NEG_X,
             Self::Right => Vec2::X,
+            Self::Jump => Vec2::ZERO,
         }
     }
 
@@ -72,6 +75,7 @@ impl PlayerAction {
             (Self::Left, KeyCode::ArrowLeft),
             (Self::Right, KeyCode::KeyD),
             (Self::Right, KeyCode::ArrowRight),
+            (Self::Jump, KeyCode::Space),
         ])
     }
 }
@@ -116,6 +120,7 @@ fn spawn_player(
     commands
         .spawn((
             Player,
+            Elevated::default(),
             PlayerHeading(Vec2::Y),
             PlayerMovement {
                 tile_pos: start_pos,
@@ -131,6 +136,7 @@ fn spawn_player(
             // Physics components — circle collider slides past wall corners
             RigidBody::Dynamic,
             Collider::circle(player_size / 2.0),
+            CollisionLayers::new(GameLayer::Floor, GameLayer::Floor),
             Friction::new(physics.player_friction),
             Restitution::new(physics.player_restitution),
             LinearDamping(physics.player_linear_damping),
@@ -227,7 +233,7 @@ pub fn handle_player_input(
 }
 
 /// Keep `tile_pos` in sync with the physics-driven `Transform`
-fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player>>) {
+pub fn sync_tile_pos(mut query: Query<(&Transform, &mut PlayerMovement), With<Player>>) {
     for (transform, mut movement) in &mut query {
         let new_tile_pos = TilePos::from_world(transform.translation.truncate());
         if new_tile_pos != movement.tile_pos {
