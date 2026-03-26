@@ -120,9 +120,9 @@ fn try_mount_wall(
     let tile = movement.tile_pos;
     let neighbors = [
         TilePos::new(tile.x, tile.y + 1),
-        TilePos::new(tile.x, tile.y.wrapping_sub(1)),
+        TilePos::new(tile.x, tile.y - 1),
         TilePos::new(tile.x + 1, tile.y),
-        TilePos::new(tile.x.wrapping_sub(1), tile.y),
+        TilePos::new(tile.x - 1, tile.y),
     ];
 
     let player_world = transform.translation.truncate();

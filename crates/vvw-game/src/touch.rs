@@ -56,6 +56,8 @@ const DOUBLE_TAP_MAX_GAP_SECS: f64 = 0.4;
 struct DPadJumpState {
     /// Whether the Up button was pressed last frame.
     was_pressed: bool,
+    /// Touch ID of the finger on the Up button (for multi-touch filtering).
+    tracked_touch_id: Option<u64>,
     /// Screen-space Y when the Up button press started.
     press_start_y: Option<f32>,
     /// Time when the Up button press started.
@@ -286,19 +288,27 @@ fn detect_dpad_jump(
     let now = time.elapsed_secs_f64();
 
     if up_pressed && !jump_state.was_pressed {
-        // Up button just pressed — record start position from active touch
-        if let Some(touch) = touches.iter().next() {
+        // Up button just pressed — record the specific touch finger and position.
+        // Double-tap: compare press time (not release) against last release.
+        if let Some(touch) = touches.iter_just_pressed().next() {
+            jump_state.tracked_touch_id = Some(touch.id());
             jump_state.press_start_y = Some(touch.position().y);
             jump_state.press_start_time = now;
+        }
+
+        let gap = now - jump_state.last_release_time;
+        if gap <= DOUBLE_TAP_MAX_GAP_SECS && jump_state.last_release_time > 0.0 {
+            jump_events.write(WallJumpRequested);
         }
     }
 
     if up_pressed {
-        // Check for swipe-up while pressed (screen Y decreases going up)
-        if let Some(start_y) = jump_state.press_start_y {
+        // Check for swipe-up while pressed — filter by tracked finger
+        if let (Some(start_y), Some(tid)) = (jump_state.press_start_y, jump_state.tracked_touch_id)
+        {
             let elapsed = now - jump_state.press_start_time;
             if elapsed <= SWIPE_MAX_DURATION_SECS
-                && let Some(touch) = touches.iter().next()
+                && let Some(touch) = touches.iter().find(|t| t.id() == tid)
             {
                 let dy = start_y - touch.position().y; // positive = upward
                 if dy >= SWIPE_THRESHOLD_PX {
@@ -310,13 +320,9 @@ fn detect_dpad_jump(
     }
 
     if !up_pressed && jump_state.was_pressed {
-        // Up button just released — check for double-tap
-        let gap = now - jump_state.last_release_time;
-        if gap <= DOUBLE_TAP_MAX_GAP_SECS && jump_state.last_release_time > 0.0 {
-            jump_events.write(WallJumpRequested);
-        }
         jump_state.last_release_time = now;
         jump_state.press_start_y = None;
+        jump_state.tracked_touch_id = None;
     }
 
     jump_state.was_pressed = up_pressed;
