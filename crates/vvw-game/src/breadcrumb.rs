@@ -369,8 +369,9 @@ fn replay_trail(
         return;
     };
 
-    // Don't replay while on walls
+    // Don't replay while on walls — zero velocity to prevent drift
     if elevated.0 {
+        velocity.0 = Vec2::ZERO;
         return;
     }
 

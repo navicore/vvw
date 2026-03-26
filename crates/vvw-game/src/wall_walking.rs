@@ -89,7 +89,7 @@ fn try_mount_wall(
             &ActionState<PlayerAction>,
             &mut Transform,
             &mut Elevated,
-            &PlayerMovement,
+            &mut PlayerMovement,
             &mut LinearVelocity,
         ),
         With<Player>,
@@ -100,19 +100,20 @@ fn try_mount_wall(
         return;
     }
 
-    let jump_requested = jump_events.read().count() > 0;
-
-    let Ok((action_state, mut transform, mut elevated, movement, mut velocity)) =
+    let Ok((action_state, mut transform, mut elevated, mut movement, mut velocity)) =
         player_query.single_mut()
     else {
+        jump_events.clear();
         return;
     };
 
     if elevated.0 {
+        jump_events.clear();
         return;
     }
 
     let spacebar = action_state.just_pressed(&PlayerAction::Jump);
+    let jump_requested = !jump_events.is_empty();
     if !spacebar && !jump_requested {
         return;
     }
@@ -140,11 +141,15 @@ fn try_mount_wall(
     }
 
     if let Some((_, wall_tile)) = best {
+        // Consume jump events only on successful mount
+        jump_events.clear();
         let wall_world = wall_tile.to_world();
         transform.translation.x = wall_world.x;
         transform.translation.y = wall_world.y;
         velocity.0 = Vec2::ZERO;
         elevated.0 = true;
+        // Sync tile_pos immediately so clamp_elevated_movement sees the wall tile
+        movement.tile_pos = wall_tile;
         events.write(PlayerElevated);
     }
 }
