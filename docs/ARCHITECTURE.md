@@ -47,6 +47,12 @@ vvw-game          Platform-independent Bevy plugin (VvwGamePlugin)
   CameraPlugin    Dead-zone follow camera + Lighting2dPlugin
   TouchControls   D-pad overlay for mobile (Bevy Interaction hit testing)
   SoundVisuals    Gain-driven arc animations radiating from audible tracks
+  WallWalking     Elevated state, GameLayer collision layers, mount/fall systems
+  Morph3dPlugin   3D view toggle (Camera3d, wall/floor meshes, heading-relative controls)
+  SoundPipePlugin Route audio from distant tracks to new locations (album opt-in)
+  BreadcrumbPlugin Record/replay player paths (album opt-in)
+  MutePlugin      Toggle all audio gain to zero (always registered)
+  InteractionModes Tab/two-finger tap mode cycling framework
 
 vvw-web           WASM web player (cdylib)
   WebAudioEngine  <audio> → MediaElementSource → GainNode → StereoPanner
@@ -77,6 +83,8 @@ vvw-deploy        CLI tool for album creation, assembly, and deployment
 **Error handling:** `anyhow` in CLI tools (vvw-deploy). `JsValue` in WASM. Game systems use silent fallbacks (skip missing tracks, default to zero gain).
 
 **Serialization:** RON everywhere except `_config.json` (minimal JSON, hand-parsed to avoid serde_json in WASM). Backward compatibility via `#[serde(default)]` on all manifest fields added after v1.
+
+**Collision layers:** `GameLayer` enum (`Floor`, `Elevated`) via avian2d `PhysicsLayer` derive. Entities declare their layer at spawn. Player's layer swaps on elevation change. Outer edge walls belong to both layers (world boundary).
 
 **System ordering:** `SpatialAudioSet` exported from vvw-game. All spatial audio systems chained: `compute_spatial_targets → interpolate_audio_state → apply_lighting_config`. Web layer runs `web_audio_sync.after(SpatialAudioSet)`.
 

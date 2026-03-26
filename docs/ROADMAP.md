@@ -22,12 +22,18 @@ Recent additions:
 - **R2 direct upload** — rust-s3 with native-tls, 10 retries with exponential backoff. Falls back to wrangler if S3 env vars not set.
 - **OG meta tags** — Open Graph and Twitter Card meta tags injected into per-album `index.html` at assembly time. Cover art, title, artist, description. `--site-url` CLI arg for canonical URLs.
 - **Solid track icons** — Track icons are physics colliders (60% tile size). Player bounces off them with configurable `track_restitution`.
+- **Interaction modes framework** — Tab/two-finger tap cycles through registered modes. `ModeRegistry` + `ActiveMode` resource. Modes can suppress movement.
+- **Sound piping** — Route audio from distant tracks to new locations via dashed construction lines. `sound_piping: true` in album metadata.
+- **Breadcrumb replay** — Record player path at 10 Hz, replay as endless back-and-forth loop. `breadcrumbs: true` in album metadata.
+- **Mute mode** — Always registered. Zeros all gains when active. Spatial audio continues computing so unmute is instant.
+- **3D view toggle** — `V` key (desktop) / three-finger tap (mobile) switches between 2D top-down and 3D first-person. `morph_3d: true` in album metadata. Cubicle-height walls, heading-relative controls, background art textures floor and walls.
+- **Wall walking** — Spacebar (desktop) / swipe-up or double-tap D-pad (mobile) mounts adjacent wall. `wall_walking: true` in album metadata. `GameLayer` collision layers (Floor/Elevated) for physics filtering. Elevated = 20% gain, LOS bypassed, pipes silent. Outer edge walls block both layers.
 
 ## Next Up
 
-- **Playback controls**: Start/pause/mute button overlay (see `docs/design/playback-controls.md`)
 - **Player avatar**: Improve the player sprite rendering
 - **Audio download resilience**: Detect and retry zero-byte audio loads (see `docs/design/audio-download-resilience.md`)
+- **World boundary**: Fall sequence and respawn when player escapes the maze (see `docs/design/world-boundary.md`)
 
 ## Known Limitations
 
