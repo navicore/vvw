@@ -10,24 +10,24 @@ default:
 # Build everything
 build:
     @echo "Building workspace..."
-    cargo build --workspace
+    cargo build --locked --workspace
     @echo "Build complete."
 
 # Build release
 build-release:
     @echo "Building workspace (release)..."
-    cargo build --workspace --release
+    cargo build --locked --workspace --release
     @echo "Release build complete."
 
 # Run all Rust unit tests
 test:
     @echo "Running tests..."
-    cargo test --workspace --all-targets
+    cargo test --locked --workspace --all-targets
 
 # Run clippy on all workspace members
 lint:
     @echo "Running clippy..."
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --locked --workspace --all-targets -- -D warnings
 
 # Format all code
 fmt:
