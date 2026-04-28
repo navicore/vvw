@@ -1,3 +1,8 @@
+<!-- ghmig:moved -->
+> **This repository has moved to [https://git.navicore.tech/navicore/vvw](https://git.navicore.tech/navicore/vvw).**
+>
+> The GitHub copy is archived and no longer maintained.
+
 # VVW - Visual Virtual World
 
 An audio exploration game where you navigate a 2D maze to discover and experience spatial audio. As you move through the maze, nearby audio tracks grow louder and distant ones fade away — all driven by line-of-sight and distance.
